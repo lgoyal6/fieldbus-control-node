@@ -7,8 +7,16 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+# Off by default so a plain `cargo build` on macOS never pulls a Linux-only
+# dependency. CI turns it on for the ubuntu runner.
+socketcan = ["dep:socketcan"]
+
 [dependencies]
 fieldbus-core = { path = "../core" }
+libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+socketcan = { version = "=4.0.0", optional = true }
