@@ -343,7 +343,15 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         },
     };
 
-    let mut hog = hog_window.map(|w| (w, CpuHog::new(w.threads)));
+    // Created and spawned here, before the clock origin is taken, so the
+    // cost of making 22 threads is paid outside the measured loop. Inside the
+    // loop the only operations on it are activate and deactivate, both of
+    // which are a lock, a store and a notify.
+    let mut hog = hog_window.map(|w| {
+        let mut h = CpuHog::new(w.threads);
+        h.spawn(cfg.period_us);
+        (w, h)
+    });
     let mut node = ControlNode::new(0);
     let mut jitter = JitterStats::new();
     let mut ledger = PeriodLedger::new(cfg.period_us);
@@ -360,15 +368,15 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         let scheduled_us = cycle * cfg.period_us;
 
         if let Some((w, h)) = hog.as_mut() {
+            // Flag flips only. Spawning and joining both happen outside this
+            // loop, because doing either inside it blocks the loop long
+            // enough to manufacture the very deadline misses this control is
+            // supposed to detect. It did exactly that twice before this.
             if cycle == w.start_cycle {
-                h.start(cfg.period_us);
+                h.activate();
             }
             if cycle == w.end_cycle {
-                // Signal only. The join happens after the loop, because
-                // joining 22 threads from inside the timed path blocks it
-                // long enough to manufacture the very deadline misses this
-                // control is supposed to detect.
-                h.signal_stop();
+                h.deactivate();
             }
         }
 
@@ -451,7 +459,7 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         h.stop();
         HogOutcome {
             threads: h.threads(),
-            policy_granted: h.granted(),
+            policy_granted: h.policy_granted(),
             start_cycle: w.start_cycle,
             end_cycle: w.end_cycle,
         }
