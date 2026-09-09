@@ -13,3 +13,6 @@
 
 #![no_std]
 
+pub mod j1939;
+
+pub use j1939::{Frame, Reject, Validator};
