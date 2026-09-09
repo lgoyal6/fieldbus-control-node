@@ -1,0 +1,106 @@
+name: ci
+
+on: [push, pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Formatting, lints and the whole suite. Clippy is -D warnings because a
+  # warning nobody fails on is a warning nobody reads.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to a commit SHA rather than a tag: a tag is a
+      # mutable pointer its owner can move to different code at any time, so a
+      # tag pin does not fix what actually runs here.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup component add rustfmt clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  # The claim this job checks: the control half of the node has no dependency
+  # on an operating system. It is a cross-compile check and nothing more. No
+  # artefact produced here is flashed to or executed on a microcontroller, and
+  # no timing figure in this repository describes one.
+  cortex-m-cross-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: rustup target add thumbv7em-none-eabihf
+      - run: cargo build -p fieldbus-core --target thumbv7em-none-eabihf
+
+  # The only place the SocketCAN backend is ever executed. The sockets and the
+  # kernel path are real; the interface is not a bus. vcan0 is a kernel
+  # loopback with no transceiver, no bit timing and no arbitration, so this is
+  # emphatically not hardware in the loop. The developer machine has no CAN
+  # adapter, which is why this lives here rather than in the local gate.
+  socketcan-vcan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: bring up a virtual CAN interface
+        run: |
+          sudo modprobe vcan
+          sudo ip link add dev vcan0 type vcan
+          sudo ip link set up vcan0
+          ip -details link show vcan0
+      # The tests are #[ignore] by default so a developer without vcan0 gets a
+      # green `cargo test` rather than a confusing failure. --ignored is what
+      # opts them in, here, where the interface exists.
+      - name: run the vcan integration tests
+        run: cargo test -p fieldbus-host --features socketcan -- --ignored --nocapture
+
+  # Proof that the pipeline works end to end: build, run, write JSON, evaluate
+  # the frozen gate, assemble a report. NOT timing evidence, and the job says
+  # so out loud. Virtual time advances a simulated clock and never sleeps, so
+  # its wake jitter is zero by construction rather than by measurement. Every
+  # timing number this repository states comes from the real-time gate in
+  # scripts/run_completion_gate.sh, run on one macOS host.
+  pipeline-virtual-time:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: cargo build --release --workspace
+      - name: state what this job is
+        run: |
+          echo "Virtual-time pipeline check. Jitter here is zero by"
+          echo "construction, not by measurement. This is not timing evidence."
+      - name: short positive run
+        run: |
+          ./target/release/fieldbus-node run \
+            --mode virtual-time --cycles 1000 \
+            --run-id ci-positive-virtual \
+            --out "$RUNNER_TEMP/ci-positive.json"
+      # The framing and watchdog controls do not depend on a real clock, so
+      # virtual time can run them at full length in milliseconds and assert
+      # the same frozen expectations the local gate does. The cpu-hog control
+      # is deliberately absent: contention is meaningless against a clock that
+      # is advanced rather than observed, and running it here would produce a
+      # NOT-caught result that says nothing about anything.
+      - name: can-corrupt control at full length
+        run: |
+          ./target/release/fieldbus-node control can-corrupt \
+            --mode virtual-time \
+            --run-id ci-can-corrupt-virtual \
+            --out "$RUNNER_TEMP/ci-can-corrupt.json"
+      - name: sensor-freeze control at full length
+        run: |
+          ./target/release/fieldbus-node control sensor-freeze \
+            --mode virtual-time \
+            --run-id ci-sensor-freeze-virtual \
+            --out "$RUNNER_TEMP/ci-sensor-freeze.json"
+      - name: assemble and evaluate
+        run: |
+          ./target/release/fieldbus-node report \
+            --out "$RUNNER_TEMP/ci-completion.json" \
+            --positive "$RUNNER_TEMP/ci-positive.json" \
+            --control "$RUNNER_TEMP/ci-can-corrupt.json" \
+            --control "$RUNNER_TEMP/ci-sensor-freeze.json"
+      - name: keep the virtual-time report for inspection
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-virtual-time-report
+          path: ${{ runner.temp }}/ci-completion.json
+          if-no-files-found: error

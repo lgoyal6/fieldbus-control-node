@@ -368,8 +368,9 @@ pub fn build_run_report(
             histogram_overflowed: j.overflowed(),
             percentile_reporting: format!(
                 "nearest-rank, reported as the upper edge of the containing {BUCKET_WIDTH_US} us \
-                 bucket, so a reported value r means the true value lies in (r - \
-                 {BUCKET_WIDTH_US}, r]. min and max are exact."
+                 bucket. Buckets are half-open, so a reported value r means the true value lies \
+                 in [r - {BUCKET_WIDTH_US}, r). An all-zero run reports every percentile as \
+                 {BUCKET_WIDTH_US} while max reports 0. min and max are exact."
             ),
         },
         missed_deadlines: DeadlineReport {
