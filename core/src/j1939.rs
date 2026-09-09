@@ -326,6 +326,26 @@ impl Validator {
     /// accepted at any `seq`, because a node that boots mid-stream has no way
     /// to know where the sender's counter is and refusing to synchronise would
     /// be a worse failure than trusting the first frame.
+    ///
+    /// # Known limitation: no resynchronisation after a real gap
+    ///
+    /// A rejected frame never advances the sequence position. That is what
+    /// makes fault attribution exact, and it is why an injected bad frame
+    /// produces one rejection rather than cascading into a second on the
+    /// next good frame. The cost is that a *genuine* gap, where the sender
+    /// really did transmit a frame that never arrived, desynchronises this
+    /// validator permanently: every later frame is one ahead of what it
+    /// expects, so every later frame is refused as [`Reject::OutOfOrder`]
+    /// and the watchdog eventually trips on starvation.
+    ///
+    /// A production node would resynchronise, most simply by accepting a
+    /// forward gap and counting it. That is not done here because the
+    /// rejection semantics are frozen in `manifest/frozen.json` and the
+    /// `can-corrupt` negative control asserts an exact per-reason histogram
+    /// against them; changing the rule after freezing it would invalidate
+    /// the control it is measured by. The limitation is stated rather than
+    /// quietly fixed, and [`crate::Watchdog`] is what keeps the failure
+    /// safe rather than silent.
     pub fn validate(&mut self, frame: &Frame) -> Result<Payload, Reject> {
         let outcome = self.classify(frame);
         match outcome {

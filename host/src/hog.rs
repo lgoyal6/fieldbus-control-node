@@ -85,16 +85,30 @@ impl CpuHog {
         !self.handles.is_empty()
     }
 
+    /// Tells the spinners to stop, without waiting for them.
+    ///
+    /// One relaxed atomic store, so this is safe to call from inside the
+    /// timed control loop. Joining there is not: the first version of this
+    /// control joined 22 threads at the end of its window and the join
+    /// blocked the loop for 173 ms, which the runner then charged to wake
+    /// jitter. Every deadline miss that run reported came from the teardown
+    /// and none from the contention, so the control appeared to be caught
+    /// when nothing had actually been detected. Signalling and joining are
+    /// separate calls for exactly that reason.
+    pub fn signal_stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
     /// Signals the spinners and joins every one of them.
     ///
     /// Joining rather than detaching is deliberate: the run's own numbers are
     /// meaningless if load from the middle of the run is still on the machine
-    /// during the tail.
+    /// during the tail. Call this outside the timed path, after the loop.
     pub fn stop(&mut self) {
         if self.handles.is_empty() {
             return;
         }
-        self.stop.store(true, Ordering::Relaxed);
+        self.signal_stop();
         for h in self.handles.drain(..) {
             let _ = h.join();
         }

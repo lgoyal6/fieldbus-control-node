@@ -60,7 +60,17 @@ pub enum Fault {
     OutOfRange,
     /// Deliver an extra frame with a short payload.
     BadLength,
-    /// Deliver nothing this cycle, dropping the legitimate frame.
+    /// Deliver nothing this cycle: the sensor did not transmit.
+    ///
+    /// The sequence counter does not advance either, because a frame that
+    /// was never sent was never numbered. So the next frame is still in
+    /// sequence and nothing is rejected; the node simply goes a period
+    /// without a fresh reading, and enough of those trip the watchdog.
+    ///
+    /// This is not a model of a wire-level loss, where the sender did
+    /// transmit and its counter did advance, leaving a real gap. That case
+    /// is documented as a limitation rather than simulated: see the note on
+    /// sequence resynchronisation in `fieldbus_core::j1939::Validator`.
     Drop,
 }
 

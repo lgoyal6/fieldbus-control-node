@@ -107,6 +107,39 @@ pub struct Miss {
     pub overrun_us: u64,
 }
 
+/// Counts whole periods that elapsed with no cycle starting in them.
+///
+/// The naive version of this counted `jitter / period` on every late cycle,
+/// which counts the *same* wall-clock periods again on each cycle that is
+/// still catching up: one 173 ms stall was reported as 153 skipped periods
+/// instead of 17. This ledger records the last period a cycle actually
+/// started in, so each period is counted at most once, no matter how many
+/// cycles run late inside it afterwards.
+#[derive(Debug, Clone, Copy)]
+pub struct PeriodLedger {
+    period_us: u64,
+    next_unaccounted: u64,
+}
+
+impl PeriodLedger {
+    /// A ledger for a loop of the given period, before any cycle has started.
+    pub fn new(period_us: u64) -> Self {
+        PeriodLedger {
+            period_us: period_us.max(1),
+            next_unaccounted: 0,
+        }
+    }
+
+    /// Records that a cycle started at `start_us` and returns how many whole
+    /// periods went by with no cycle starting in them.
+    pub fn account_cycle_start(&mut self, start_us: u64) -> u64 {
+        let period = start_us / self.period_us;
+        let skipped = period.saturating_sub(self.next_unaccounted);
+        self.next_unaccounted = period + 1;
+        skipped
+    }
+}
+
 /// Whether the elevated scheduling policy was asked for and whether it stuck.
 #[derive(Debug, Clone)]
 pub struct SchedulingReport {
@@ -313,6 +346,7 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
     let mut hog = hog_window.map(|w| (w, CpuHog::new(w.threads)));
     let mut node = ControlNode::new(0);
     let mut jitter = JitterStats::new();
+    let mut ledger = PeriodLedger::new(cfg.period_us);
     let mut misses: Vec<Miss> = Vec::new();
     let mut trip_cycle: Option<u64> = None;
     let mut safe_state: Option<SafeState> = None;
@@ -330,7 +364,11 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
                 h.start(cfg.period_us);
             }
             if cycle == w.end_cycle {
-                h.stop();
+                // Signal only. The join happens after the loop, because
+                // joining 22 threads from inside the timed path blocks it
+                // long enough to manufacture the very deadline misses this
+                // control is supposed to detect.
+                h.signal_stop();
             }
         }
 
@@ -351,9 +389,11 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         let jitter_us = start_us.saturating_sub(scheduled_us);
         jitter.record(jitter_us);
 
-        // Whole periods that went by before this cycle even started. Each one
-        // is a period in which the actuator received no command.
-        let skipped = jitter_us / cfg.period_us;
+        // Whole periods that went by with no cycle starting in them. Each one
+        // is a period in which the actuator received no command. The ledger
+        // makes sure a given period is counted once, not once per cycle that
+        // is still running late inside it.
+        let skipped = ledger.account_cycle_start(start_us);
         for k in 0..skipped {
             jitter.record_miss();
             misses.push(Miss {
@@ -361,7 +401,7 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
                 kind: MissKind::SkippedPeriod,
                 jitter_us,
                 work_us: 0,
-                overrun_us: jitter_us - k * cfg.period_us,
+                overrun_us: jitter_us.saturating_sub(k * cfg.period_us),
             });
         }
 
@@ -405,6 +445,8 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         }
     }
 
+    // Join here, outside the timed path, so the cost of tearing the hog down
+    // lands on nobody's deadline.
     let hog_outcome = hog.as_mut().map(|(w, h)| {
         h.stop();
         HogOutcome {
