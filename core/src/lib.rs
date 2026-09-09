@@ -15,7 +15,10 @@
 
 pub mod control;
 pub mod j1939;
+pub mod node;
+pub mod telemetry;
 pub mod watchdog;
 
 pub use j1939::{Frame, Reject, Validator};
+pub use node::{ControlNode, StepOutput};
 pub use watchdog::{SafeReason, SafeState, Watchdog};
