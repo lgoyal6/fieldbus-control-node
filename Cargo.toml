@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Laksh Goyal"]
+repository = "https://github.com/lgoyal6/fieldbus-control-node"
+
+[profile.release]
+# The timing numbers this repository reports are measured from a release build.
+# Debug symbols are kept so a miss can be attributed with a profiler without
+# changing the binary that produced the numbers.
+debug = 1
