@@ -11,7 +11,10 @@ use fieldbus_core::j1939::{
     command_frame, crc8_j1850, sensor_frame, Frame, Id, Payload, Reject, Validator, PGN_COMMAND,
     PGN_SENSOR, PRIORITY, SA_CONTROLLER, SA_SENSOR, STATUS_OK, VALUE_MAX, VALUE_MIN,
 };
-use fieldbus_core::node::{ControlNode, SETPOINT, WATCHDOG_TIMEOUT_US};
+use fieldbus_core::node::{
+    ControlNode, FILTER_ALPHA, KI, KP, OUT_MAX, OUT_MIN, SAFE_ACTUATOR, SETPOINT,
+    WATCHDOG_TIMEOUT_US,
+};
 use fieldbus_core::telemetry::{JitterStats, BUCKET_WIDTH_US, NUM_BUCKETS, OVERFLOW_FLOOR_US};
 use fieldbus_core::watchdog::{SafeReason, Watchdog};
 
@@ -795,12 +798,55 @@ fn rejected_frames_alone_do_not_hold_off_the_watchdog() {
 }
 
 #[test]
-fn setpoint_and_timeout_are_the_frozen_values() {
-    // A guard on the manifest: if these constants drift, every number in
-    // results/ is describing a different experiment.
-    assert_eq!(SETPOINT, 500.0);
-    assert_eq!(WATCHDOG_TIMEOUT_US, 100_000);
-    assert_eq!(fieldbus_core::control::PERIOD_US, 10_000);
+fn frozen_constants_match_the_committed_manifest() {
+    // The drift guard. `manifest/frozen.json` states the experiment; these
+    // constants perform it. If the two ever disagree, every number in
+    // `results/` is describing a different experiment than the one the
+    // manifest froze, and this test is the only thing that would notice.
+    // It reads the manifest rather than restating it, so the check cannot be
+    // satisfied by editing a duplicate copy of the numbers.
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../manifest/frozen.json");
+    let raw = std::fs::read_to_string(path).expect("manifest/frozen.json must be committed");
+    let m: serde_json::Value = serde_json::from_str(&raw).expect("manifest must be valid JSON");
+
+    let law = &m["control_law"];
+    assert_eq!(law["setpoint"].as_f64().unwrap() as f32, SETPOINT);
+    assert_eq!(law["filter_alpha"].as_f64().unwrap() as f32, FILTER_ALPHA);
+    assert_eq!(law["kp"].as_f64().unwrap() as f32, KP);
+    assert_eq!(law["ki"].as_f64().unwrap() as f32, KI);
+    assert_eq!(law["out_min"].as_f64().unwrap() as f32, OUT_MIN);
+    assert_eq!(law["out_max"].as_f64().unwrap() as f32, OUT_MAX);
+    assert_eq!(
+        law["accepted_value_min"].as_i64().unwrap() as i16,
+        VALUE_MIN
+    );
+    assert_eq!(
+        law["accepted_value_max"].as_i64().unwrap() as i16,
+        VALUE_MAX
+    );
+
+    assert_eq!(
+        m["watchdog"]["timeout_us"].as_u64().unwrap(),
+        WATCHDOG_TIMEOUT_US
+    );
+    assert_eq!(
+        m["watchdog"]["safe_actuator_value"].as_f64().unwrap() as f32,
+        SAFE_ACTUATOR
+    );
+    assert_eq!(
+        m["loop"]["target_period_us"].as_u64().unwrap(),
+        fieldbus_core::control::PERIOD_US
+    );
+
+    // The manifest asserts nothing physical was involved. If any of these
+    // ever flips to true, it has to be because hardware actually existed.
+    let env = &m["execution_environment"];
+    assert_eq!(env["mode"].as_str().unwrap(), "simulated");
+    assert!(!env["hardware_in_the_loop"].as_bool().unwrap());
+    assert!(!env["physical_can_hardware"].as_bool().unwrap());
+    assert!(!env["microcontroller_execution"].as_bool().unwrap());
+    assert!(!env["rtos"].as_bool().unwrap());
+
     let f = command_frame(0, 0, STATUS_OK);
     assert_eq!(Id::unpack(f.id).source_address, SA_CONTROLLER);
 }

@@ -9,5 +9,11 @@ repository.workspace = true
 
 [dependencies]
 
+[dev-dependencies]
+# Test-only, so it never reaches the thumbv7em build: the drift guard in
+# core_tests.rs reads manifest/frozen.json and compares it against the
+# constants in this crate.
+serde_json = "1"
+
 [lints.rust]
 unsafe_code = "forbid"

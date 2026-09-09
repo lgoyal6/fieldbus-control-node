@@ -1,0 +1,120 @@
+{
+  "manifest_version": 1,
+  "frozen_on": "2026-09-09",
+  "rationale": "Thresholds and experiment design are fixed here before any result run. Nothing in this file may be edited in response to a measurement. A run that misses a threshold is a negative result and is reported as one.",
+
+  "execution_environment": {
+    "mode": "simulated",
+    "host_count": 1,
+    "bus": "simulated, deterministic, in-process; no physical CAN transceiver and no CAN adapter is attached to the machine",
+    "sensor": "simulated first-order plant driven by the node's own actuator command; no physical sensor",
+    "hardware_in_the_loop": false,
+    "physical_can_hardware": false,
+    "microcontroller_execution": false,
+    "microcontroller_status": "cross-compile check only: fieldbus-core builds for thumbv7em-none-eabihf and has never been flashed or executed on a device",
+    "rtos": false,
+    "scheduling": "POSIX-hosted periodic loop with deadline telemetry; the Mach time-constraint policy is requested as a best effort and the grant result is recorded, not assumed",
+    "hil_json_produced": false,
+    "hil_json_rationale": "No physical hardware is available on this machine, so results/hil.json is deliberately not produced. Its absence is the honest outcome, not a gap to be filled with a simulator run relabelled."
+  },
+
+  "loop": {
+    "target_period_us": 10000,
+    "cycles": 10000,
+    "seed": 20260909,
+    "seed_rationale": "A single fixed seed drives the simulated plant's measurement noise. The fault injector schedule is by explicit cycle index, not by the seed, so an injected fault lands at the same cycle regardless of seed."
+  },
+
+  "control_law": {
+    "setpoint": 500.0,
+    "filter_alpha": 0.3,
+    "kp": 0.6,
+    "ki": 4.0,
+    "out_min": -1000.0,
+    "out_max": 1000.0,
+    "accepted_value_min": -10000,
+    "accepted_value_max": 10000
+  },
+
+  "watchdog": {
+    "timeout_us": 100000,
+    "safe_actuator_value": 0.0,
+    "latching": true
+  },
+
+  "positive_gate": {
+    "description": "All four conditions must hold on both positive runs for the completion gate to pass.",
+    "missed_deadlines_max": 0,
+    "p99_jitter_us_max": 1000,
+    "rejected_frames_max": 0,
+    "watchdog_may_trip": false,
+    "deadline_miss_definition": "A cycle whose work finishes later than its own scheduled start plus one period. Every period that passes with no cycle executing in it at all is counted as a miss as well, so lateness cannot be hidden by simply running fewer cycles than periods elapsed.",
+    "jitter_definition": "Actual cycle start minus scheduled cycle start, in microseconds, where scheduled start is t0 + i * period computed once from the monotonic clock so error does not accumulate. Early wakes are recorded as zero.",
+    "p99_reporting": "Upper edge of the 10 us histogram bucket containing the nearest-rank p99 sample, so the reported figure is never optimistic."
+  },
+
+  "negative_controls": [
+    {
+      "id": "cpu-hog",
+      "subcommand": "control cpu-hog",
+      "mechanism": "During the middle 40 percent of the run (cycles 3000 through 6999 of 10000), spawn 2 x logical-core-count spinning threads that request the same elevated scheduling policy as the control thread, then join them.",
+      "expected": "The positive gate is violated: missed_deadlines > 0 OR p99 jitter > 1000 us.",
+      "caught_definition": "caught == true if and only if the positive gate fails on this run.",
+      "if_not_caught": "Report the control as NOT caught and say so. The gate is not to be weakened to make it catch."
+    },
+    {
+      "id": "can-corrupt",
+      "subcommand": "control can-corrupt",
+      "mechanism": "At the fixed cycles listed below, inject one additional malformed frame alongside the valid one for that cycle. Injecting an extra frame rather than corrupting the in-stream frame is deliberate: it keeps the legitimate sequence intact so each injected fault produces exactly one rejection attributable to exactly one reason, with no cascade into the next cycle.",
+      "injection_cycles": {
+        "bad_crc": [1000, 2000, 3000, 4000, 5000],
+        "duplicate": [1200, 2200, 3200, 4200, 5200],
+        "out_of_order": [1400, 2400, 3400, 4400, 5400],
+        "out_of_range": [1600, 3600, 5600],
+        "bad_length": [1800, 3800]
+      },
+      "expected_rejected_total": 20,
+      "expected_rejected_by_reason": {
+        "bad_length": 2,
+        "unknown_pgn": 0,
+        "unexpected_source": 0,
+        "bad_crc": 5,
+        "bad_reserved": 0,
+        "duplicate": 5,
+        "out_of_order": 5,
+        "out_of_range": 3
+      },
+      "expected_accepted": 10000,
+      "expected": "Every injected frame is rejected under its intended reason, no legitimate frame is rejected, and the positive gate's rejected == 0 condition therefore fails.",
+      "caught_definition": "caught == true if and only if rejected == 20 AND the per-reason histogram matches expected_rejected_by_reason exactly AND accepted == expected_accepted AND the positive gate fails on this run."
+    },
+    {
+      "id": "sensor-freeze",
+      "subcommand": "control sensor-freeze",
+      "mechanism": "The simulated sensor stops emitting at cycle 5000 and never resumes.",
+      "freeze_at_cycle": 5000,
+      "expected": "The watchdog trips within one period of the staleness deadline, the SensorStale reason persists to the end of the run, the actuator command is 0 from the trip onward, and the positive gate's watchdog condition therefore fails.",
+      "max_reaction_time_us": 10000,
+      "reaction_time_definition": "tripped_at_us - (last_seen_us + timeout_us). One period is the tightest bound achievable by a watchdog evaluated once per period.",
+      "caught_definition": "caught == true if and only if the watchdog tripped AND its reason is sensor_stale AND reaction_time_us <= 10000 AND the actuator command is 0 for every cycle from the trip to the end AND the positive gate fails on this run."
+    }
+  ],
+
+  "completion_gate": {
+    "command": "scripts/run_completion_gate.sh",
+    "sequence": [
+      "cargo clean",
+      "cargo build --release --workspace",
+      "cargo test --workspace",
+      "cargo build -p fieldbus-core --target thumbv7em-none-eabihf",
+      "positive run 1 (10000 cycles, real time)",
+      "control cpu-hog",
+      "control can-corrupt",
+      "control sensor-freeze",
+      "positive run 2 (10000 cycles, real time)",
+      "assemble results/completion.json"
+    ],
+    "pass_condition": "Exit 0 if and only if both positive runs satisfy every condition in positive_gate AND all three negative controls report caught == true.",
+    "negative_control_safety": "Each fault is reachable only through its own explicit CLI subcommand and is selected only by this script. No fault is enabled by default and none is committed in an on state."
+  }
+}
