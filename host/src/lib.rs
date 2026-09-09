@@ -15,3 +15,6 @@ pub mod bus;
 pub mod hog;
 pub mod manifest;
 pub mod runner;
+
+#[cfg(all(target_os = "linux", feature = "socketcan"))]
+pub mod socketcan;
