@@ -1,0 +1,706 @@
+{
+  "what": "Machine-readable evidence for the timing, framing and watchdog claims in this repository. Produced by scripts/run_completion_gate.sh from a committed tree. Every number here comes from a simulated in-process CAN bus and a simulated sensor on one Apple Silicon Mac. No CAN hardware, no microcontroller execution, no hardware in the loop, no RTOS.",
+  "manifest": {
+    "path": "manifest/frozen.json",
+    "sha256": "e8c0a1d77ad76de81bacc12ffba565207440bcd6d9c5cbdcf84a0e1e24e92220"
+  },
+  "environment": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu_model": "Apple M3 Pro",
+    "core_count": 11,
+    "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0",
+    "mode": "simulated",
+    "clock_mode": "real-time",
+    "host_count": 1,
+    "physical_can_hardware": false,
+    "hardware_in_the_loop": false,
+    "rtos": false,
+    "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+  },
+  "target_period_us": 10000,
+  "cycles": 10000,
+  "positive_runs": [
+    {
+      "run_id": "positive-1",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "e8c0a1d77ad76de81bacc12ffba565207440bcd6d9c5cbdcf84a0e1e24e92220"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 99990013,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 20,
+        "p99": 30,
+        "max": 1009,
+        "min": 0,
+        "mean": 8,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 0,
+        "explained": [],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 10000,
+        "rejected": 0,
+        "rejected_by_reason": {
+          "bad_crc": 0,
+          "bad_length": 0,
+          "bad_reserved": 0,
+          "duplicate": 0,
+          "out_of_order": 0,
+          "out_of_range": 0,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": false,
+        "reason": null,
+        "reaction_time_us": null,
+        "trip_cycle": null,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 100000
+      },
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "false",
+            "passed": true
+          }
+        ],
+        "pass": true
+      },
+      "control": null
+    },
+    {
+      "run_id": "positive-2",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "e8c0a1d77ad76de81bacc12ffba565207440bcd6d9c5cbdcf84a0e1e24e92220"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 99990008,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 20,
+        "p99": 30,
+        "max": 187,
+        "min": 0,
+        "mean": 8,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 0,
+        "explained": [],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 10000,
+        "rejected": 0,
+        "rejected_by_reason": {
+          "bad_crc": 0,
+          "bad_length": 0,
+          "bad_reserved": 0,
+          "duplicate": 0,
+          "out_of_order": 0,
+          "out_of_range": 0,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": false,
+        "reason": null,
+        "reaction_time_us": null,
+        "trip_cycle": null,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 100000
+      },
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "false",
+            "passed": true
+          }
+        ],
+        "pass": true
+      },
+      "control": null
+    }
+  ],
+  "negative_controls": [
+    {
+      "run_id": "cpu-hog",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "e8c0a1d77ad76de81bacc12ffba565207440bcd6d9c5cbdcf84a0e1e24e92220"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 100005256,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 20,
+        "p99": 30,
+        "max": 33000,
+        "min": 0,
+        "mean": 14,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 7,
+        "explained": [
+          {
+            "cycle": 9491,
+            "kind": "work_overran",
+            "jitter_us": 1763,
+            "work_us": 38166,
+            "overrun_us": 29929
+          },
+          {
+            "cycle": 9492,
+            "kind": "skipped_period",
+            "jitter_us": 33000,
+            "work_us": 0,
+            "overrun_us": 33000
+          },
+          {
+            "cycle": 9492,
+            "kind": "skipped_period",
+            "jitter_us": 33000,
+            "work_us": 0,
+            "overrun_us": 23000
+          },
+          {
+            "cycle": 9492,
+            "kind": "skipped_period",
+            "jitter_us": 33000,
+            "work_us": 0,
+            "overrun_us": 13000
+          },
+          {
+            "cycle": 9492,
+            "kind": "work_overran",
+            "jitter_us": 33000,
+            "work_us": 1,
+            "overrun_us": 23001
+          },
+          {
+            "cycle": 9493,
+            "kind": "work_overran",
+            "jitter_us": 23116,
+            "work_us": 0,
+            "overrun_us": 13116
+          },
+          {
+            "cycle": 9494,
+            "kind": "work_overran",
+            "jitter_us": 13116,
+            "work_us": 0,
+            "overrun_us": 3116
+          }
+        ],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 10000,
+        "rejected": 0,
+        "rejected_by_reason": {
+          "bad_crc": 0,
+          "bad_length": 0,
+          "bad_reserved": 0,
+          "duplicate": 0,
+          "out_of_order": 0,
+          "out_of_range": 0,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": false,
+        "reason": null,
+        "reaction_time_us": null,
+        "trip_cycle": null,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 100000
+      },
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "7",
+            "passed": false
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "false",
+            "passed": true
+          }
+        ],
+        "pass": false
+      },
+      "control": {
+        "id": "cpu-hog",
+        "expected": "the positive gate is violated: missed_deadlines > 0 OR p99 jitter > 1000 us",
+        "caught_checks": [
+          {
+            "name": "positive_gate_fails",
+            "expected": "false (the gate must not pass under contention)",
+            "observed": "gate pass = false",
+            "passed": true
+          },
+          {
+            "name": "hog_threads_with_policy_granted",
+            "expected": "diagnostic only, 22 spawned",
+            "observed": "22 of 22 granted the elevated policy",
+            "passed": true
+          }
+        ],
+        "caught": true,
+        "note": "Caught. 22 spinning threads (22 with the elevated policy granted) pushed the loop past the frozen deadline gate, which is what makes the gate evidence rather than decoration."
+      }
+    },
+    {
+      "run_id": "can-corrupt",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "e8c0a1d77ad76de81bacc12ffba565207440bcd6d9c5cbdcf84a0e1e24e92220"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 99990006,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 20,
+        "p99": 30,
+        "max": 474,
+        "min": 0,
+        "mean": 7,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 0,
+        "explained": [],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 10000,
+        "rejected": 20,
+        "rejected_by_reason": {
+          "bad_crc": 5,
+          "bad_length": 2,
+          "bad_reserved": 0,
+          "duplicate": 5,
+          "out_of_order": 5,
+          "out_of_range": 3,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": false,
+        "reason": null,
+        "reaction_time_us": null,
+        "trip_cycle": null,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 100000
+      },
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "20",
+            "passed": false
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "false",
+            "passed": true
+          }
+        ],
+        "pass": false
+      },
+      "control": {
+        "id": "can-corrupt",
+        "expected": "every injected fault is rejected under its intended reason, no legitimate frame is rejected, and the positive gate's rejected == 0 condition therefore fails",
+        "caught_checks": [
+          {
+            "name": "rejected_total",
+            "expected": "== 20",
+            "observed": "20",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.bad_crc",
+            "expected": "== 5",
+            "observed": "5",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.bad_length",
+            "expected": "== 2",
+            "observed": "2",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.bad_reserved",
+            "expected": "== 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.duplicate",
+            "expected": "== 5",
+            "observed": "5",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.out_of_order",
+            "expected": "== 5",
+            "observed": "5",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.out_of_range",
+            "expected": "== 3",
+            "observed": "3",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.unexpected_source",
+            "expected": "== 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.unknown_pgn",
+            "expected": "== 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "accepted",
+            "expected": "== 10000",
+            "observed": "10000",
+            "passed": true
+          },
+          {
+            "name": "positive_gate_fails",
+            "expected": "false (rejected == 0 must not hold)",
+            "observed": "gate pass = false",
+            "passed": true
+          }
+        ],
+        "caught": true,
+        "note": "Caught. The exact per-reason histogram matched, which shows the validator attributed each fault to the right cause rather than merely counting more refusals."
+      }
+    },
+    {
+      "run_id": "sensor-freeze",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "e8c0a1d77ad76de81bacc12ffba565207440bcd6d9c5cbdcf84a0e1e24e92220"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 99990006,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 20,
+        "p99": 30,
+        "max": 55,
+        "min": 0,
+        "mean": 7,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 0,
+        "explained": [],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 5000,
+        "rejected": 0,
+        "rejected_by_reason": {
+          "bad_crc": 0,
+          "bad_length": 0,
+          "bad_reserved": 0,
+          "duplicate": 0,
+          "out_of_order": 0,
+          "out_of_range": 0,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": true,
+        "reason": "sensor_stale",
+        "reaction_time_us": 10004,
+        "trip_cycle": 5010,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 100000
+      },
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "true",
+            "passed": false
+          }
+        ],
+        "pass": false
+      },
+      "control": {
+        "id": "sensor-freeze",
+        "expected": "the watchdog trips within one period of the staleness deadline, the reason persists to the end of the run, the actuator is commanded to 0 from the trip onward, and the positive gate's watchdog condition therefore fails",
+        "caught_checks": [
+          {
+            "name": "watchdog_tripped",
+            "expected": "true",
+            "observed": "true",
+            "passed": true
+          },
+          {
+            "name": "watchdog_reason",
+            "expected": "sensor_stale",
+            "observed": "sensor_stale",
+            "passed": true
+          },
+          {
+            "name": "reaction_time_us",
+            "expected": "<= 10000",
+            "observed": "10004",
+            "passed": false
+          },
+          {
+            "name": "actuator_zero_since_trip",
+            "expected": "true",
+            "observed": "true",
+            "passed": true
+          },
+          {
+            "name": "safe_state_persists_to_end_of_run",
+            "expected": "true",
+            "observed": "true",
+            "passed": true
+          },
+          {
+            "name": "positive_gate_fails",
+            "expected": "false (the watchdog must not be allowed to trip)",
+            "observed": "gate pass = false",
+            "passed": true
+          },
+          {
+            "name": "freeze_cycle_from_manifest",
+            "expected": "sensor stops at cycle 5000",
+            "observed": "trip cycle Some(5010)",
+            "passed": true
+          }
+        ],
+        "caught": false,
+        "note": "NOT caught. See the failing checks."
+      }
+    }
+  ],
+  "summary": {
+    "positive_runs_passed": 2,
+    "positive_runs_total": 2,
+    "controls_caught": 2,
+    "controls_total": 3,
+    "overall_pass": false
+  },
+  "limitations": [
+    "The CAN bus is simulated in-process. No CAN adapter, transceiver or physical bus was involved, and no frame left this machine.",
+    "The sensor is a simulated first-order plant driven by the node's own command. There is no physical sensor and no physical actuator.",
+    "This is not hardware in the loop. No device, board, QEMU instance or virtual interface stands in for hardware in these numbers.",
+    "Single host. Every number was produced on one Apple Silicon Mac under macOS with other processes running; there is no cross-machine or cross-platform comparison here.",
+    "Not a hard real-time system. This is a POSIX-hosted periodic loop with deadline telemetry. The Mach time-constraint policy is requested as a best effort and the grant result is recorded; it is not a guarantee, and macOS may demote the thread.",
+    "No RTOS, no ISO 26262 process, no ASIL classification, no automotive qualification and no certification of any kind.",
+    "fieldbus-core is compiled for thumbv7em-none-eabihf as a cross-compile check only. It has never been flashed to or executed on a microcontroller, and no timing figure here describes a microcontroller.",
+    "The SocketCAN backend uses real AF_CAN sockets but is exercised only against a virtual vcan0 interface on a GitHub Actions ubuntu runner. A virtual interface is a kernel loopback, not a bus.",
+    "Jitter percentiles are reported as the upper edge of a 10 us histogram bucket. They are bounds, not exact samples; min and max are exact."
+  ]
+}
