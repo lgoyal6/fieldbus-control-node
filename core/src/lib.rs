@@ -13,6 +13,9 @@
 
 #![no_std]
 
+pub mod control;
 pub mod j1939;
+pub mod watchdog;
 
 pub use j1939::{Frame, Reject, Validator};
+pub use watchdog::{SafeReason, SafeState, Watchdog};
