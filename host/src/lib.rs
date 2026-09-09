@@ -10,10 +10,10 @@
 //! there is no CAN adapter, so that backend is exercised only against a
 //! virtual `vcan0` interface in CI. Neither is hardware in the loop.
 
-
 pub mod bus;
 pub mod hog;
 pub mod manifest;
+pub mod report;
 pub mod runner;
 
 #[cfg(all(target_os = "linux", feature = "socketcan"))]

@@ -1,0 +1,723 @@
+//! The JSON result files and the gate evaluation that decides pass or fail.
+//!
+//! Every field here is written so a reader can tell what was measured from
+//! what was assumed. In particular the environment block states, on every
+//! single run, that the bus and sensor are simulated, that no CAN hardware is
+//! attached, that this is one host, that there is no RTOS and that nothing was
+//! hardware in the loop. Those are not decorations: a timing number without
+//! them is a claim about a machine the reader cannot identify.
+//!
+//! Gate evaluation is a list of named checks, each carrying what was expected,
+//! what was observed and whether it held. A single boolean would be smaller
+//! and would make a failure impossible to diagnose or to audit against the
+//! frozen manifest.
+
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use fieldbus_core::j1939::{Reject, REJECT_KINDS};
+use fieldbus_core::telemetry::BUCKET_WIDTH_US;
+
+use crate::manifest::{Manifest, NegativeControl};
+use crate::runner::{Mode, RunOutcome};
+
+/// How many explained misses are written to JSON before the list is capped.
+///
+/// The count is always exact and never capped; only the per-miss detail is.
+/// Under the `cpu-hog` control the miss list can run to thousands of entries,
+/// and a result file nobody can open is not evidence.
+pub const MAX_EXPLAINED_MISSES: usize = 200;
+
+/// What the numbers were produced on, and what they were not produced on.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Environment {
+    /// Operating system, from the compiler's own target constants.
+    pub os: String,
+    /// Target architecture.
+    pub arch: String,
+    /// CPU model string as the kernel reports it.
+    pub cpu_model: String,
+    /// Logical core count.
+    pub core_count: usize,
+    /// The elevated scheduling policy request and its outcome.
+    pub scheduling_policy: String,
+    /// Always `"simulated"`: the bus and the sensor are in-process models.
+    pub mode: String,
+    /// `"real-time"` or `"virtual-time"`.
+    pub clock_mode: String,
+    /// Number of machines involved. Always 1.
+    pub host_count: u32,
+    /// Whether a CAN transceiver or adapter was involved. Always false here.
+    pub physical_can_hardware: bool,
+    /// Whether any physical device was in the loop. Always false here.
+    pub hardware_in_the_loop: bool,
+    /// Whether a real-time operating system was used. Always false here.
+    pub rtos: bool,
+    /// Plain-language statement of what this run is, carried in the data so
+    /// it survives being quoted out of context.
+    pub statement: String,
+}
+
+impl Environment {
+    /// Describes the current process and the given clock mode.
+    pub fn detect(clock_mode: Mode, scheduling_policy: String) -> Environment {
+        Environment {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            cpu_model: cpu_model(),
+            core_count: crate::hog::logical_cores(),
+            scheduling_policy,
+            mode: "simulated".to_string(),
+            clock_mode: clock_mode.as_str().to_string(),
+            host_count: 1,
+            physical_can_hardware: false,
+            hardware_in_the_loop: false,
+            rtos: false,
+            statement: "Simulated in-process CAN bus and simulated first-order sensor plant, \
+                        single host, no physical CAN hardware, not hardware in the loop, no \
+                        RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard \
+                        real-time system."
+                .to_string(),
+        }
+    }
+}
+
+/// CPU model string, or `"unknown"` if the kernel will not say.
+#[cfg(target_os = "macos")]
+fn cpu_model() -> String {
+    let name = c"machdep.cpu.brand_string";
+    let mut len: libc::size_t = 0;
+    // Two calls: the first asks how long the answer is, the second reads it.
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            std::ptr::null_mut(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc != 0 || len == 0 {
+        return "unknown".to_string();
+    }
+    let mut buf = vec![0u8; len];
+    let rc = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            buf.as_mut_ptr() as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc != 0 {
+        return "unknown".to_string();
+    }
+    buf.truncate(len);
+    while buf.last() == Some(&0) {
+        buf.pop();
+    }
+    String::from_utf8_lossy(&buf).to_string()
+}
+
+/// CPU model string from `/proc/cpuinfo`, or `"unknown"`.
+#[cfg(not(target_os = "macos"))]
+fn cpu_model() -> String {
+    std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("model name") || l.starts_with("Model"))
+                .and_then(|l| l.split(':').nth(1))
+                .map(|v| v.trim().to_string())
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Which manifest this run was gated against.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestRef {
+    /// Path as given on the command line.
+    pub path: String,
+    /// SHA-256 of the manifest bytes, computed by this binary at run time.
+    /// This is what ties a number to the thresholds that were frozen before
+    /// it existed.
+    pub sha256: String,
+}
+
+impl ManifestRef {
+    /// Hashes the manifest file at `path`.
+    pub fn of(path: &Path) -> Result<ManifestRef, String> {
+        let bytes =
+            std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        let mut h = Sha256::new();
+        h.update(&bytes);
+        Ok(ManifestRef {
+            path: path.display().to_string(),
+            sha256: format!("{:x}", h.finalize()),
+        })
+    }
+}
+
+/// Jitter summary, with its own resolution stated inline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JitterReport {
+    /// p50, as an upper-edge bound.
+    pub p50: u64,
+    /// p95, as an upper-edge bound.
+    pub p95: u64,
+    /// p99, as an upper-edge bound.
+    pub p99: u64,
+    /// Exact largest sample.
+    pub max: u64,
+    /// Exact smallest sample.
+    pub min: u64,
+    /// Arithmetic mean, truncated.
+    pub mean: u64,
+    /// Number of samples.
+    pub samples: u64,
+    /// Histogram bucket width in microseconds.
+    pub histogram_bucket_width_us: u64,
+    /// Whether any sample exceeded the histogram range, which would make the
+    /// percentiles lower bounds.
+    pub histogram_overflowed: bool,
+    /// How to read the percentile figures.
+    pub percentile_reporting: String,
+}
+
+/// One explained deadline miss.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MissReport {
+    /// Cycle index.
+    pub cycle: u64,
+    /// `work_overran` or `skipped_period`.
+    pub kind: String,
+    /// Wake jitter of that cycle.
+    pub jitter_us: u64,
+    /// Work duration of that cycle.
+    pub work_us: u64,
+    /// How far past the deadline it finished.
+    pub overrun_us: u64,
+}
+
+/// Deadline accounting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeadlineReport {
+    /// Exact total, never capped.
+    pub count: u64,
+    /// Per-miss detail, capped at [`MAX_EXPLAINED_MISSES`].
+    pub explained: Vec<MissReport>,
+    /// Whether `explained` was capped.
+    pub explained_truncated: bool,
+    /// What counts as a miss.
+    pub definition: String,
+}
+
+/// Frame accounting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CanReport {
+    /// Frames the validator accepted.
+    pub accepted: u32,
+    /// Frames the validator refused.
+    pub rejected: u32,
+    /// Refusals by reason.
+    pub rejected_by_reason: std::collections::BTreeMap<String, u32>,
+}
+
+/// Watchdog outcome.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchdogReport {
+    /// Whether a safe state latched during the run.
+    pub tripped: bool,
+    /// The reason name, if it tripped.
+    pub reason: Option<String>,
+    /// `tripped_at_us - (last_seen_us + timeout_us)`, if it tripped.
+    pub reaction_time_us: Option<u64>,
+    /// Cycle at which it latched.
+    pub trip_cycle: Option<u64>,
+    /// Whether the commanded actuator was 0 for every cycle after the trip.
+    pub actuator_zero_since_trip: bool,
+    /// The staleness budget in force.
+    pub timeout_us: u64,
+}
+
+/// One named gate condition and whether it held.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Check {
+    /// What is being checked.
+    pub name: String,
+    /// What the frozen manifest requires.
+    pub expected: String,
+    /// What this run produced.
+    pub observed: String,
+    /// Whether the condition held.
+    pub passed: bool,
+}
+
+/// The positive gate's verdict on one run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GateReport {
+    /// Every condition, evaluated.
+    pub checks: Vec<Check>,
+    /// True only if every check passed.
+    pub pass: bool,
+}
+
+impl GateReport {
+    /// Builds a verdict from a list of checks.
+    pub fn from_checks(checks: Vec<Check>) -> GateReport {
+        let pass = checks.iter().all(|c| c.passed);
+        GateReport { checks, pass }
+    }
+}
+
+/// A negative control's verdict.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControlReport {
+    /// Control identifier, matching the manifest.
+    pub id: String,
+    /// What the manifest says should happen.
+    pub expected: String,
+    /// Every condition the manifest attaches to "caught", evaluated.
+    pub caught_checks: Vec<Check>,
+    /// True only if every caught-condition held.
+    pub caught: bool,
+    /// Stated plainly for a reader who only looks at one field.
+    pub note: String,
+}
+
+/// One run's complete result file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunReport {
+    /// Which run this is: `positive-1`, `cpu-hog`, and so on.
+    pub run_id: String,
+    /// What produced the numbers.
+    pub environment: Environment,
+    /// Which frozen manifest applied.
+    pub manifest: ManifestRef,
+    /// Period in microseconds.
+    pub target_period_us: u64,
+    /// Cycles executed.
+    pub cycles: u64,
+    /// Wall-clock length of the run.
+    pub wall_us: u64,
+    /// Wake jitter.
+    pub jitter_us: JitterReport,
+    /// Deadline misses.
+    pub missed_deadlines: DeadlineReport,
+    /// Frame accounting.
+    pub can: CanReport,
+    /// Watchdog outcome.
+    pub watchdog: WatchdogReport,
+    /// The positive gate, evaluated against this run whether or not it is a
+    /// positive run. For a negative control, a failing gate is the point.
+    pub gate: GateReport,
+    /// Present only for a negative control.
+    pub control: Option<ControlReport>,
+}
+
+/// Builds a run report from an outcome and the frozen manifest.
+pub fn build_run_report(
+    run_id: &str,
+    outcome: &RunOutcome,
+    cfg_mode: Mode,
+    period_us: u64,
+    manifest: &Manifest,
+    manifest_ref: ManifestRef,
+    watchdog_timeout_us: u64,
+) -> RunReport {
+    let j = &outcome.jitter;
+    let mut by_reason = std::collections::BTreeMap::new();
+    for i in 0..REJECT_KINDS {
+        by_reason.insert(Reject::name(i).to_string(), outcome.rejected_by_reason[i]);
+    }
+
+    let explained: Vec<MissReport> = outcome
+        .misses
+        .iter()
+        .take(MAX_EXPLAINED_MISSES)
+        .map(|m| MissReport {
+            cycle: m.cycle,
+            kind: m.kind.as_str().to_string(),
+            jitter_us: m.jitter_us,
+            work_us: m.work_us,
+            overrun_us: m.overrun_us,
+        })
+        .collect();
+
+    let gate = evaluate_positive_gate(outcome, manifest);
+
+    RunReport {
+        run_id: run_id.to_string(),
+        environment: Environment::detect(cfg_mode, outcome.scheduling.summary()),
+        manifest: manifest_ref,
+        target_period_us: period_us,
+        cycles: outcome.executed_cycles,
+        wall_us: outcome.wall_us,
+        jitter_us: JitterReport {
+            p50: j.p50_us(),
+            p95: j.p95_us(),
+            p99: j.p99_us(),
+            max: j.max_us(),
+            min: j.min_us(),
+            mean: j.mean_us(),
+            samples: j.count(),
+            histogram_bucket_width_us: BUCKET_WIDTH_US,
+            histogram_overflowed: j.overflowed(),
+            percentile_reporting: format!(
+                "nearest-rank, reported as the upper edge of the containing {BUCKET_WIDTH_US} us \
+                 bucket, so a reported value r means the true value lies in (r - \
+                 {BUCKET_WIDTH_US}, r]. min and max are exact."
+            ),
+        },
+        missed_deadlines: DeadlineReport {
+            count: j.missed_deadlines(),
+            explained_truncated: outcome.misses.len() > explained.len(),
+            explained,
+            definition: "A cycle whose work finished after its own scheduled start plus one \
+                         period, plus every whole period that elapsed with no cycle executing \
+                         in it."
+                .to_string(),
+        },
+        can: CanReport {
+            accepted: outcome.accepted,
+            rejected: outcome.rejected,
+            rejected_by_reason: by_reason,
+        },
+        watchdog: WatchdogReport {
+            tripped: outcome.safe_state.is_some(),
+            reason: outcome.safe_state.map(|s| s.reason_name().to_string()),
+            reaction_time_us: outcome.safe_state.map(|s| s.reaction_time_us()),
+            trip_cycle: outcome.trip_cycle,
+            actuator_zero_since_trip: outcome.actuator_zero_since_trip,
+            timeout_us: watchdog_timeout_us,
+        },
+        gate,
+        control: None,
+    }
+}
+
+/// Evaluates the four frozen positive-gate conditions against a run.
+///
+/// Applied to every run, including the negative controls. For a control, the
+/// gate is expected to fail, and the failure is what "caught" means.
+pub fn evaluate_positive_gate(outcome: &RunOutcome, manifest: &Manifest) -> GateReport {
+    let g = &manifest.positive_gate;
+    let misses = outcome.jitter.missed_deadlines();
+    let p99 = outcome.jitter.p99_us();
+    let tripped = outcome.safe_state.is_some();
+    GateReport::from_checks(vec![
+        Check {
+            name: "missed_deadlines".to_string(),
+            expected: format!("<= {}", g.missed_deadlines_max),
+            observed: misses.to_string(),
+            passed: misses <= g.missed_deadlines_max,
+        },
+        Check {
+            name: "p99_jitter_us".to_string(),
+            expected: format!("<= {}", g.p99_jitter_us_max),
+            observed: p99.to_string(),
+            passed: p99 <= g.p99_jitter_us_max,
+        },
+        Check {
+            name: "rejected_frames".to_string(),
+            expected: format!("<= {}", g.rejected_frames_max),
+            observed: outcome.rejected.to_string(),
+            passed: outcome.rejected <= g.rejected_frames_max,
+        },
+        Check {
+            name: "watchdog_tripped".to_string(),
+            expected: format!("{}", g.watchdog_may_trip),
+            observed: tripped.to_string(),
+            passed: g.watchdog_may_trip || !tripped,
+        },
+    ])
+}
+
+/// Evaluates whether the `cpu-hog` control was caught.
+///
+/// Caught means the positive gate failed. Nothing more is asserted, because
+/// nothing more is knowable: the control creates contention and either the
+/// gate notices or it does not. If it does not, that is reported as not
+/// caught. The gate is not adjusted to make it catch.
+pub fn evaluate_cpu_hog(
+    gate: &GateReport,
+    hog: Option<crate::runner::HogOutcome>,
+) -> ControlReport {
+    let caught = !gate.pass;
+    let (threads, granted) = hog.map(|h| (h.threads, h.policy_granted)).unwrap_or((0, 0));
+    ControlReport {
+        id: "cpu-hog".to_string(),
+        expected: "the positive gate is violated: missed_deadlines > 0 OR p99 jitter > 1000 us"
+            .to_string(),
+        caught_checks: vec![
+            Check {
+                name: "positive_gate_fails".to_string(),
+                expected: "false (the gate must not pass under contention)".to_string(),
+                observed: format!("gate pass = {}", gate.pass),
+                passed: caught,
+            },
+            // A diagnostic, not part of the verdict, and so deliberately
+            // always passing. It is recorded so a NOT-caught result can be
+            // read correctly: contention from threads the scheduler refused
+            // to elevate is a different experiment from contention from
+            // peers at the same policy.
+            Check {
+                name: "hog_threads_with_policy_granted".to_string(),
+                expected: format!("diagnostic only, {threads} spawned"),
+                observed: format!("{granted} of {threads} granted the elevated policy"),
+                passed: true,
+            },
+        ],
+        caught,
+        note: if caught {
+            format!(
+                "Caught. {threads} spinning threads ({granted} with the elevated policy \
+                 granted) pushed the loop past the frozen deadline gate, which is what makes \
+                 the gate evidence rather than decoration."
+            )
+        } else {
+            format!(
+                "NOT caught. {threads} spinning threads ({granted} with the elevated policy \
+                 granted) did not push the loop past the frozen gate. The gate has deliberately \
+                 not been weakened to make this control fire, and the hog has not been made \
+                 more aggressive than the frozen mechanism specifies. The honest reading is \
+                 that this machine absorbed the contention."
+            )
+        },
+    }
+}
+
+/// Evaluates whether the `can-corrupt` control was caught.
+///
+/// Caught means every injected fault was detected under its intended reason,
+/// no legitimate frame was refused, and the run is therefore correctly
+/// reported as not clean. A control that merely raised the total rejection
+/// count would not distinguish a working validator from one that refuses
+/// frames at random.
+pub fn evaluate_can_corrupt(
+    gate: &GateReport,
+    outcome: &RunOutcome,
+    spec: &NegativeControl,
+) -> ControlReport {
+    let mut checks = Vec::new();
+
+    if let Some(total) = spec.expected_rejected_total {
+        checks.push(Check {
+            name: "rejected_total".to_string(),
+            expected: format!("== {total}"),
+            observed: outcome.rejected.to_string(),
+            passed: outcome.rejected == total,
+        });
+    }
+    if let Some(expected) = &spec.expected_rejected_by_reason {
+        for (name, want) in expected {
+            let idx = (0..REJECT_KINDS).find(|&i| Reject::name(i) == name.as_str());
+            let got = idx.map(|i| outcome.rejected_by_reason[i]);
+            checks.push(Check {
+                name: format!("rejected_by_reason.{name}"),
+                expected: format!("== {want}"),
+                observed: match got {
+                    Some(v) => v.to_string(),
+                    None => "no such reason in this build".to_string(),
+                },
+                passed: got == Some(*want),
+            });
+        }
+    }
+    if let Some(acc) = spec.expected_accepted {
+        checks.push(Check {
+            name: "accepted".to_string(),
+            expected: format!("== {acc}"),
+            observed: outcome.accepted.to_string(),
+            passed: outcome.accepted == acc,
+        });
+    }
+    checks.push(Check {
+        name: "positive_gate_fails".to_string(),
+        expected: "false (rejected == 0 must not hold)".to_string(),
+        observed: format!("gate pass = {}", gate.pass),
+        passed: !gate.pass,
+    });
+
+    let caught = checks.iter().all(|c| c.passed);
+    ControlReport {
+        id: "can-corrupt".to_string(),
+        expected: "every injected fault is rejected under its intended reason, no legitimate \
+                   frame is rejected, and the positive gate's rejected == 0 condition therefore \
+                   fails"
+            .to_string(),
+        caught,
+        note: if caught {
+            "Caught. The exact per-reason histogram matched, which shows the validator \
+             attributed each fault to the right cause rather than merely counting more \
+             refusals."
+                .to_string()
+        } else {
+            "NOT caught. The observed rejection histogram does not match the frozen \
+             expectation; see the failing checks."
+                .to_string()
+        },
+        caught_checks: checks,
+    }
+}
+
+/// Evaluates whether the `sensor-freeze` control was caught.
+pub fn evaluate_sensor_freeze(
+    gate: &GateReport,
+    outcome: &RunOutcome,
+    spec: &NegativeControl,
+) -> ControlReport {
+    let tripped = outcome.safe_state.is_some();
+    let reason = outcome
+        .safe_state
+        .map(|s| s.reason_name().to_string())
+        .unwrap_or_else(|| "none".to_string());
+    let reaction = outcome.safe_state.map(|s| s.reaction_time_us());
+    let max_reaction = spec.max_reaction_time_us.unwrap_or(u64::MAX);
+
+    let mut checks = vec![
+        Check {
+            name: "watchdog_tripped".to_string(),
+            expected: "true".to_string(),
+            observed: tripped.to_string(),
+            passed: tripped,
+        },
+        Check {
+            name: "watchdog_reason".to_string(),
+            expected: "sensor_stale".to_string(),
+            observed: reason.clone(),
+            passed: reason == "sensor_stale",
+        },
+        Check {
+            name: "reaction_time_us".to_string(),
+            expected: format!("<= {max_reaction}"),
+            observed: match reaction {
+                Some(v) => v.to_string(),
+                None => "never tripped".to_string(),
+            },
+            passed: reaction.map(|v| v <= max_reaction).unwrap_or(false),
+        },
+        Check {
+            name: "actuator_zero_since_trip".to_string(),
+            expected: "true".to_string(),
+            observed: outcome.actuator_zero_since_trip.to_string(),
+            passed: tripped && outcome.actuator_zero_since_trip,
+        },
+        Check {
+            name: "safe_state_persists_to_end_of_run".to_string(),
+            expected: "true".to_string(),
+            observed: tripped.to_string(),
+            passed: tripped,
+        },
+        Check {
+            name: "positive_gate_fails".to_string(),
+            expected: "false (the watchdog must not be allowed to trip)".to_string(),
+            observed: format!("gate pass = {}", gate.pass),
+            passed: !gate.pass,
+        },
+    ];
+    if let Some(c) = spec.freeze_at_cycle {
+        checks.push(Check {
+            name: "freeze_cycle_from_manifest".to_string(),
+            expected: format!("sensor stops at cycle {c}"),
+            observed: format!("trip cycle {:?}", outcome.trip_cycle),
+            passed: outcome.trip_cycle.map(|t| t > c).unwrap_or(false),
+        });
+    }
+
+    let caught = checks.iter().all(|c| c.passed);
+    ControlReport {
+        id: "sensor-freeze".to_string(),
+        expected: "the watchdog trips within one period of the staleness deadline, the reason \
+                   persists to the end of the run, the actuator is commanded to 0 from the trip \
+                   onward, and the positive gate's watchdog condition therefore fails"
+            .to_string(),
+        caught,
+        note: if caught {
+            "Caught. The latch held to the end of the run and the actuator was commanded to the \
+             safe value throughout, so the safe state is a state and not a momentary log line."
+                .to_string()
+        } else {
+            "NOT caught. See the failing checks.".to_string()
+        },
+        caught_checks: checks,
+    }
+}
+
+/// The assembled evidence file, `results/completion.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionReport {
+    /// What this file is.
+    pub what: String,
+    /// The frozen manifest and its hash.
+    pub manifest: ManifestRef,
+    /// The environment, taken from the first positive run.
+    pub environment: Environment,
+    /// Period in microseconds.
+    pub target_period_us: u64,
+    /// Cycles per run.
+    pub cycles: u64,
+    /// Both positive runs, in order.
+    pub positive_runs: Vec<RunReport>,
+    /// All three negative controls, in order.
+    pub negative_controls: Vec<RunReport>,
+    /// The verdict.
+    pub summary: Summary,
+    /// What these numbers do not show.
+    pub limitations: Vec<String>,
+}
+
+/// The overall verdict.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Summary {
+    /// How many of the two positive runs passed every frozen gate.
+    pub positive_runs_passed: usize,
+    /// How many positive runs there were.
+    pub positive_runs_total: usize,
+    /// How many of the three controls were caught.
+    pub controls_caught: usize,
+    /// How many controls there were.
+    pub controls_total: usize,
+    /// True only if every positive run passed and every control was caught.
+    pub overall_pass: bool,
+}
+
+/// The limitations carried inside every completion file, so they travel with
+/// the numbers rather than living only in a README nobody quotes.
+pub fn limitations() -> Vec<String> {
+    vec![
+        "The CAN bus is simulated in-process. No CAN adapter, transceiver or physical bus was \
+         involved, and no frame left this machine."
+            .to_string(),
+        "The sensor is a simulated first-order plant driven by the node's own command. There is \
+         no physical sensor and no physical actuator."
+            .to_string(),
+        "This is not hardware in the loop. No device, board, QEMU instance or virtual interface \
+         stands in for hardware in these numbers."
+            .to_string(),
+        "Single host. Every number was produced on one Apple Silicon Mac under macOS with other \
+         processes running; there is no cross-machine or cross-platform comparison here."
+            .to_string(),
+        "Not a hard real-time system. This is a POSIX-hosted periodic loop with deadline \
+         telemetry. The Mach time-constraint policy is requested as a best effort and the grant \
+         result is recorded; it is not a guarantee, and macOS may demote the thread."
+            .to_string(),
+        "No RTOS, no ISO 26262 process, no ASIL classification, no automotive qualification and \
+         no certification of any kind."
+            .to_string(),
+        "fieldbus-core is compiled for thumbv7em-none-eabihf as a cross-compile check only. It \
+         has never been flashed to or executed on a microcontroller, and no timing figure here \
+         describes a microcontroller."
+            .to_string(),
+        "The SocketCAN backend uses real AF_CAN sockets but is exercised only against a virtual \
+         vcan0 interface on a GitHub Actions ubuntu runner. A virtual interface is a kernel \
+         loopback, not a bus."
+            .to_string(),
+        "Jitter percentiles are reported as the upper edge of a 10 us histogram bucket. They are \
+         bounds, not exact samples; min and max are exact."
+            .to_string(),
+    ]
+}
