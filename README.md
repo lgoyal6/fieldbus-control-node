@@ -67,7 +67,9 @@ per-reason histogram (5 bad CRC, 5 duplicate, 5 out of order, 3 out of range,
 ## The completion gate does not pass
 
 `./scripts/run_completion_gate.sh` exits **1**. Two of three negative controls
-were caught. This is a real result and it is not being written around.
+were caught. This is a real result and it is not being written around, and it
+is not a one-off: the gate was run five times and passed twice, both times for
+reasons that turned out to be defects in the controls rather than detections.
 
 The `cpu-hog` control is not caught on this machine. It spawns 22 spinning
 threads (2x logical cores), all 22 granted the same elevated scheduling policy
@@ -89,6 +91,49 @@ aggressive than `manifest/frozen.json` specifies. Changing either after seeing
 the result is the thing the frozen manifest exists to prevent. A future
 iteration should re-freeze the control's criterion **before** running it
 again, not after.
+
+### Reproducibility: five gate runs, and what they actually showed
+
+The gate was run five times in the session that produced this repository.
+`results/completion.json` is run 4; `results/completion-rerun.json` is run 5,
+an independent rerun from the same commit, committed so the claim below can be
+checked rather than taken on faith.
+
+| run | binary | positive runs | cpu-hog | can-corrupt | sensor-freeze | overall |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | before both fixes | 2/2 pass | caught | caught | caught | PASS |
+| 2 | before both fixes | 2/2 pass | not caught | caught | not caught | FAIL |
+| 3 | join fixed, spawn not | 2/2 pass | caught | caught | caught | PASS |
+| 4 | both fixed | 2/2 pass | not caught | caught | caught | FAIL |
+| 5 | both fixed | 2/2 pass | caught | caught | not caught | FAIL |
+
+Three things follow, and only the first is comfortable.
+
+**The positive result is solid.** Ten of ten positive runs passed every frozen
+threshold, across five gate runs and a machine with other work on it. So is
+`can-corrupt`: caught five times out of five, with the exact per-reason
+histogram every time.
+
+**`cpu-hog` has never once been caught by its own contention.** It has been
+recorded as caught three times, and all three trace to something else. Runs 1
+and 3 were its own thread join and thread spawn stalling the loop from inside
+the timed path. In run 5 the seven misses are at cycles 9491 through 9494,
+about 2,500 cycles *after* the hog window closed, with zero inside it: that is
+unrelated background load on a shared machine, not the control. Grouping
+misses by cycle index is the only reason any of this is visible, which is why
+`missed_deadlines.explained` carries the cycle.
+
+**`sensor-freeze` sits on a knife edge of its own frozen bound.** The manifest
+requires the watchdog reaction to be at most 10,000 us, one period, and calls
+that the tightest bound achievable by a watchdog evaluated once per period.
+That is true for an ideal clock and wrong for a real one. The last accepted
+frame is timestamped at its cycle's actual wake time and the check happens at
+another cycle's actual wake time, so the reaction is one period plus the
+difference between two jitter samples. Measured values across these runs were
+3 us, 9,988 us, 9,999 us and 10,004 us: the boundary cycle either trips or it
+does not, and when it does not the reaction lands just over the bound. The
+threshold has not been raised. The correct fix is to re-freeze it as one
+period plus the jitter allowance **before** the next run, not after this one.
 
 ### The control caught the harness three times first
 
