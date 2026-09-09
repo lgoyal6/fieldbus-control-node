@@ -1,0 +1,13 @@
+[package]
+name = "fieldbus-host"
+description = "std host for fieldbus-core: periodic runner, deterministic simulated bus, Linux SocketCAN backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+fieldbus-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
