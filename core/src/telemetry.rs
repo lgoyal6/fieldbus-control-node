@@ -10,12 +10,16 @@
 //!
 //! # Resolution, stated plainly
 //!
-//! Buckets are [`BUCKET_WIDTH_US`] microseconds wide. Sample `v` lands in
-//! bucket `v / 10`, and a percentile is reported as the **upper edge** of the
-//! bucket that contains it. So a reported percentile `r` means the true value
-//! lies in `(r - 10, r]`: the report is never optimistic, and it is never
-//! wrong by more than one bucket width. [`JitterStats::min_us`] and
-//! [`JitterStats::max_us`] are exact, unbucketed values.
+//! Buckets are [`BUCKET_WIDTH_US`] microseconds wide and half-open: bucket `i`
+//! holds samples in `[i * 10, (i + 1) * 10)`. Sample `v` lands in bucket
+//! `v / 10`, and a percentile is reported as the **upper edge** of the bucket
+//! that contains it. So a reported percentile `r` means the true value lies in
+//! `[r - 10, r)`: the report is never optimistic, and it is never wrong by
+//! more than one bucket width. A run whose samples are all zero therefore
+//! reports every percentile as 10 while [`JitterStats::max_us`] reports 0,
+//! which is the convention working, not a contradiction.
+//! [`JitterStats::min_us`] and [`JitterStats::max_us`] are exact, unbucketed
+//! values.
 //!
 //! Samples at or above [`OVERFLOW_FLOOR_US`] all land in one overflow bucket.
 //! A percentile that falls there is reported as [`OVERFLOW_FLOOR_US`] and is a
