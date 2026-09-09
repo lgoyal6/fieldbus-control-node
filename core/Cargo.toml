@@ -1,0 +1,13 @@
+[package]
+name = "fieldbus-core"
+description = "no_std control-node core: J1939-style CAN framing, PI control, watchdog, deadline telemetry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
