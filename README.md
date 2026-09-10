@@ -32,132 +32,166 @@ Stated first, because everything below is only meaningful with it in view.
 - **Not the J1939 protocol.** This uses the J1939 *identifier layout* and two
   proprietary-B PGNs. There is no transport protocol, no multi-packet
   reassembly and no address claiming.
-- **Single host.** One Apple M3 Pro under macOS, with other processes running.
+- **Single host.** One Apple M3 Pro under macOS, with other processes running,
+  including a multi-hour training job during every run reported below.
+
+## Two experiments, and why there are two
+
+The experiment is frozen in a manifest before any result exists, and the
+manifest is what the code reads at run time. There have been two.
+
+**v1** (`manifest/frozen-v1.json`, results under `results/v1/`) failed its own
+completion gate. Two of three negative controls fired. The `cpu-hog` control
+never did: it ran 22 spinning threads at the *same* Mach time-constraint
+policy the control thread had been granted, and 22 peers on 11 cores produced
+0 missed deadlines and a p99 of 30 us against a frozen threshold of 1000 us.
+The `sensor-freeze` control was caught, but sat on a knife edge of its own
+bound: reactions of 3, 9988, 9999 and 10004 us against a 10000 us limit.
+
+Nothing was published, and neither threshold was touched. **v2**
+(`manifest/frozen.json`) changes exactly two things and states in the file
+itself that the positive gate is byte-identical to v1's, which a test checks
+as bytes:
+
+- **A. The hog is now strictly higher priority.** The requirement asks for a
+  higher-priority CPU hog. The time-constraint band is the highest a user
+  process can request on this OS, so in the `cpu-hog` run *and nowhere else*
+  the control thread stays in the band below it. Both sides' requests, grants
+  and QoS classes are written into the result file.
+- **B. The watchdog budget is eight periods, not ten,** and the reaction is
+  measured from the last accepted sensor frame rather than from the expiry of
+  the internal budget. That is the literal requirement: the safe state within
+  100 ms of the last good reading.
+
+Six short probe runs were made **before** v2 was frozen, and they are recorded
+in the manifest's `design_exploration` section, including the one that made
+the reporting change necessary: a control thread outside the time-constraint
+band costs about 2 ms of wake latency with no hog running at all, which
+already exceeds the p99 threshold. So the manifest pre-registers the reading:
+on the `cpu-hog` run, a p99 violation is the demotion and the *deadline
+misses* are the contention.
 
 ## What was measured
 
 From `results/completion.json`, produced by `scripts/run_completion_gate.sh`
-at commit `c966a33` against the manifest frozen at sha256
-`e8c0a1d77ad76de81bacc12ffba565207440bcd6d9c5cbdcf84a0e1e24e92220`.
+at commit `ad31bf0` against the manifest frozen at sha256
+`6894f1de0879e48252f4fb8174e090ef13e70b945feea726e6c7ed5e90f20e93`.
 
 Environment: macOS, aarch64, Apple M3 Pro, 11 logical cores, simulated bus and
 simulated sensor, real-time clock, Mach `THREAD_TIME_CONSTRAINT_POLICY`
-requested and **granted**.
+requested and **granted** on both positive runs.
 
 Two positive runs, one before the negative controls and one after, each 10,000
 cycles at a 10,000 us period:
 
 | run | p50 | p95 | p99 | max | min | missed deadlines | accepted | rejected |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| positive-1 | 10 us | 20 us | 30 us | 148 us | 0 us | 0 | 10000 | 0 |
-| positive-2 | 10 us | 20 us | 30 us | 149 us | 0 us | 0 | 10000 | 0 |
+| positive-1 | 10 us | 20 us | 30 us | 3789 us | 0 us | 0 | 10000 | 0 |
+| positive-2 | 10 us | 20 us | 30 us | 142 us | 0 us | 0 | 10000 | 0 |
 
 Percentiles are the upper edge of a 10 us histogram bucket, so a reported `r`
-means the true value is in `[r - 10, r)`. `min` and `max` are exact.
+means the true value is in `[r - 10, r)`. `min` and `max` are exact. The
+3789 us maximum on the first run is one sample out of ten thousand on a
+machine that was also training a model; it is reported because it happened,
+and it is not gated because a single wake is not what a deadline gate is for.
 
-The watchdog, measured under the `sensor-freeze` control: tripped **3 us**
-past its 100,000 us staleness deadline, latched for the remaining 4,991
-cycles, and commanded the actuator to 0 for every cycle after the trip.
+### The `cpu-hog` control, which v1 could not catch
 
-The validator, measured under the `can-corrupt` control: 20 injected
-malformed frames produced exactly 20 rejections with the exact frozen
-per-reason histogram (5 bad CRC, 5 duplicate, 5 out of order, 3 out of range,
-2 bad length), while all 10,000 legitimate frames were still accepted.
+22 spinning threads, all 22 granted the Mach time-constraint policy, across
+the middle 4,000 cycles, while this run's control thread requests nothing and
+stays in the default timeshare band at `QOS_CLASS_USER_INTERACTIVE`. The
+spinners report `QOS_CLASS_UNSPECIFIED`, because a thread granted the
+time-constraint policy has left the QoS bands entirely. That is the priority
+relation, and it is in the result file rather than in this paragraph only.
 
-## The completion gate does not pass
+| | inside the hog window | outside it |
+| --- | --- | --- |
+| cycles | 3000 through 6999 | 0 through 2999 and 7000 through 9999 |
+| missed deadlines | 512 | 6 |
+| p50 jitter | 2010 us | 2000 us |
+| p99 jitter | 40000 us (lower bound) | 2510 us |
+| max jitter | 1177505 us | 16632 us |
 
-`./scripts/run_completion_gate.sh` exits **1**. Two of three negative controls
-were caught. This is a real result and it is not being written around, and it
-is not a one-off: the gate was run five times and passed twice, both times for
-reasons that turned out to be defects in the controls rather than detections.
+Read those two columns together, because separately either one misleads. The
+out-of-window column is the same thread, at the same policy, in the same run,
+with no hog: it is the baseline. It already fails the 1000 us p99 threshold,
+which is the cost of the demotion and not of the contention. What the hog adds
+is the rest: 512 of 518 missed deadlines inside the window, and a peak wake
+jitter of 1.18 seconds against 16.6 ms outside it.
 
-The `cpu-hog` control is not caught on this machine. It spawns 22 spinning
-threads (2x logical cores), all 22 granted the same elevated scheduling policy
-as the control thread, across the middle 4,000 cycles. That produced **zero
-missed deadlines and a p99 of 30 us** against a frozen threshold of 1000 us.
-The contention is real: the same window burns 7.99 CPU-seconds of user time in
-a 1.6 second run that otherwise burns 0.00, and peak jitter reached 1070 us.
-It is simply invisible to a p99 over 10,000 samples.
+The in-window p99 of 40000 us is a **lower bound**, not a measurement. The
+jitter histogram covers 4000 buckets of 10 us, so samples past 40 ms land in
+the overflow bucket; `histogram_overflowed` is `true` in that run's JSON and
+the percentile figures are floors. The exact maximum, 1177505 us, is tracked
+separately and is exact.
 
-Two honest readings, and this repository does not choose between them for you:
+### The watchdog and the validator
 
-1. An M3 Pro that has granted a time-constraint policy really does absorb
-   2x-core-count contention without missing a 10 ms deadline.
-2. p99 is the wrong statistic to catch brief contention with. Maximum jitter
-   moved by a factor of seven and the gate could not see it.
+The watchdog, under the `sensor-freeze` control: the sensor stops at cycle
+5000, and the node entered its safe state **80,053 us after the last accepted
+sensor frame**, 19,947 us inside the 100,000 us bound, at cycle 5007. It
+latched for the remaining 4,993 cycles and commanded the actuator to 0 for
+every cycle after the trip.
 
-The threshold has not been changed and the hog has not been made more
-aggressive than `manifest/frozen.json` specifies. Changing either after seeing
-the result is the thing the frozen manifest exists to prevent. A future
-iteration should re-freeze the control's criterion **before** running it
-again, not after.
+The trip landed at cycle 5007 rather than the nominal 5008 because the check
+runs at each cycle's actual wake time, not its scheduled one, so the boundary
+cycle can move by one either way. That wobble is exactly why the budget is
+eight periods: it is now absorbed by 20 ms of margin instead of deciding
+whether the run passes.
 
-### Reproducibility: five gate runs, and what they actually showed
+The validator, under the `can-corrupt` control: 20 injected malformed frames
+produced exactly 20 rejections with the exact frozen per-reason histogram
+(5 bad CRC, 5 duplicate, 5 out of order, 3 out of range, 2 bad length), while
+all 10,000 legitimate frames were still accepted.
 
-The gate was run five times in the session that produced this repository.
-`results/completion.json` is run 4; `results/completion-rerun.json` is run 5,
-an independent rerun from the same commit, committed so the claim below can be
-checked rather than taken on faith.
+## The completion gate passes, and what that is worth
 
-| run | binary | positive runs | cpu-hog | can-corrupt | sensor-freeze | overall |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | before both fixes | 2/2 pass | caught | caught | caught | PASS |
-| 2 | before both fixes | 2/2 pass | not caught | caught | not caught | FAIL |
-| 3 | join fixed, spawn not | 2/2 pass | caught | caught | caught | PASS |
-| 4 | both fixed | 2/2 pass | not caught | caught | caught | FAIL |
-| 5 | both fixed | 2/2 pass | caught | caught | not caught | FAIL |
+`./scripts/run_completion_gate.sh` exits **0**: both positive runs met every
+frozen threshold and all three controls were caught. That is worth exactly as
+much as the controls are, so here is what each one actually establishes.
 
-Three things follow, and only the first is comfortable.
+- **`can-corrupt`** establishes the most. An exact per-reason histogram cannot
+  be matched by a validator that refuses frames at random.
+- **`sensor-freeze`** establishes that the safe state is a state: latched to
+  the end of the run, actuator at 0 throughout, inside a bound with margin
+  rather than on top of one.
+- **`cpu-hog`** establishes that the deadline gate can be made to fail by real
+  contention, which v1 could not show. It does **not** establish that this
+  machine cannot absorb a same-priority hog. v1 already showed the opposite,
+  and that result stands: 22 peers at the same policy did nothing at all.
 
-**The positive result is solid.** Ten of ten positive runs passed every frozen
-threshold, across five gate runs and a machine with other work on it. So is
-`can-corrupt`: caught five times out of five, with the exact per-reason
-histogram every time.
+The gate's own history is part of the evidence and stays in the repository.
+`results/v1/` holds the two v1 completion files, including the failing one,
+and `manifest/frozen-v1.json` is preserved byte for byte, hash checked by a
+test from both sides, so nothing about v1 can be quietly revised now that v2
+has a green result.
 
-**`cpu-hog` has never once been caught by its own contention.** It has been
-recorded as caught three times, and all three trace to something else. Runs 1
-and 3 were its own thread join and thread spawn stalling the loop from inside
-the timed path. In run 5 the seven misses are at cycles 9491 through 9494,
-about 2,500 cycles *after* the hog window closed, with zero inside it: that is
-unrelated background load on a shared machine, not the control. Grouping
-misses by cycle index is the only reason any of this is visible, which is why
-`missed_deadlines.explained` carries the cycle.
+### What v1 caught that was not a control
 
-**`sensor-freeze` sits on a knife edge of its own frozen bound.** The manifest
-requires the watchdog reaction to be at most 10,000 us, one period, and calls
-that the tightest bound achievable by a watchdog evaluated once per period.
-That is true for an ideal clock and wrong for a real one. The last accepted
-frame is timestamped at its cycle's actual wake time and the check happens at
-another cycle's actual wake time, so the reaction is one period plus the
-difference between two jitter samples. Measured values across these runs were
-3 us, 9,988 us, 9,999 us and 10,004 us: the boundary cycle either trips or it
-does not, and when it does not the reaction lands just over the bound. The
-threshold has not been raised. The correct fix is to re-freeze it as one
-period plus the jitter allowance **before** the next run, not after this one.
-
-### The control caught the harness three times first
-
-Worth reading if you are inclined to trust a green gate. `cpu-hog` reported
-*caught* twice before this, and both were false:
+Worth reading if you are inclined to trust a green gate. Before v1's honest
+failure, `cpu-hog` reported *caught* three times, and all three were false:
 
 - It joined its 22 threads from inside the timed loop at the end of its
   window. The join blocked the loop for 173 ms, which the runner charged to
-  wake jitter and then to 170 deadline misses. Every one of them was after the
-  window closed; none were inside it.
+  wake jitter and then to 170 deadline misses, every one of them after the
+  window closed.
 - With the join moved out, it spawned its 22 threads from inside the timed
-  loop at the start of its window, blocking for 20 ms and producing 4 misses,
-  all in the first two cycles of the window and none across the 4,000
-  contended cycles that followed.
+  loop at the start of its window, blocking for 20 ms and producing 4 misses
+  in the first two cycles and none across the 4,000 contended cycles after.
+- On a third occasion the seven misses were at cycles 9491 through 9494,
+  about 2,500 cycles *after* the window closed, with zero inside it: unrelated
+  background load on a shared machine.
 
-A third defect surfaced alongside them: skipped periods were counted as
+A fourth defect surfaced alongside them: skipped periods were counted as
 `jitter / period` on every late cycle, so each cycle still catching up
 re-counted periods already counted, and one 173 ms stall was reported as 153
 lost periods instead of 17.
 
-All three are fixed, with regression tests. What found them was the
-`missed_deadlines.explained` list in the result files: a miss carries its
-cycle index, so a catch can be audited rather than believed. That is why the
-list is there.
+All are fixed, with regression tests. What found them was the
+`missed_deadlines.explained` list: a miss carries its cycle index, so a catch
+can be audited rather than believed. It is also why v2 reports the in-window
+and out-of-window split as a first-class field instead of leaving a reader to
+group cycle indices by hand.
 
 ## Known limitation: no sequence resynchronisation
 
@@ -186,21 +220,24 @@ core/     fieldbus-core   no_std, no alloc, no unsafe
   node.rs       ControlNode::step, a pure function of time and frames
 host/     fieldbus-host   std, binary `fieldbus-node`
   bus.rs        CanBus trait, deterministic SimBus with a fault injector
-  runner.rs     periodic scheduler, jitter and deadline accounting
+  runner.rs     periodic scheduler, jitter and deadline accounting,
+                scheduling policy and QoS readback
   hog.rs        the cpu-hog negative control
   socketcan.rs  Linux AF_CAN backend (feature `socketcan`, Linux only)
   report.rs     result JSON and gate evaluation
-manifest/frozen.json        the experiment, frozen before any result existed
+manifest/frozen.json        the experiment in force, v2
+manifest/frozen-v1.json     v1, superseded, preserved byte for byte
 scripts/run_completion_gate.sh
-results/completion.json     the machine-readable evidence
+results/completion.json     the machine-readable evidence for v2
+results/v1/                 v1's evidence, including its gate failure
 ```
 
 ## Running it
 
 ```sh
 # The completion gate. About nine minutes: five 100-second real-time runs
-# plus a clean release build. Exits 0 only if both positive runs meet every frozen
-# threshold and all three controls are caught.
+# plus a clean release build. Exits 0 only if both positive runs meet every
+# frozen threshold and all three controls are caught.
 ./scripts/run_completion_gate.sh
 
 # A single positive run.
@@ -209,7 +246,8 @@ cargo build --release --workspace
     --seed 20260909 --out results/my-run.json
 
 # The negative controls. Each is the only way to reach its fault; nothing is
-# enabled by default.
+# enabled by default. cpu-hog will make the machine unresponsive for the 40
+# seconds of its window, because that is what it is for.
 ./target/release/fieldbus-node control cpu-hog       --out /tmp/hog.json
 ./target/release/fieldbus-node control can-corrupt   --out /tmp/corrupt.json
 ./target/release/fieldbus-node control sensor-freeze --out /tmp/freeze.json
