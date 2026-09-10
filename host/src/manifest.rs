@@ -81,6 +81,13 @@ pub struct NegativeControl {
     /// Expected accepted count. `can-corrupt` only.
     #[serde(default)]
     pub expected_accepted: Option<u32>,
+    /// Scheduling policy the control thread requests during this control's
+    /// run. `cpu-hog` only; every other run uses the elevated policy.
+    #[serde(default)]
+    pub control_thread_policy: Option<String>,
+    /// Scheduling policy each spinner requests. `cpu-hog` only.
+    #[serde(default)]
+    pub hog_thread_policy: Option<String>,
     /// Cycle at which the sensor stops. `sensor-freeze` only.
     #[serde(default)]
     pub freeze_at_cycle: Option<u64>,

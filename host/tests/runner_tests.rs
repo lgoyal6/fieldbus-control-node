@@ -19,7 +19,7 @@
 //! The second bug is the one that is unit-testable, and it is the one that
 //! would have misreported any real stall, not just this control's.
 
-use fieldbus_host::runner::{Mode, PeriodLedger, RunConfig};
+use fieldbus_host::runner::{Mode, PeriodLedger, RunConfig, ThreadPolicy};
 
 const PERIOD: u64 = 10_000;
 /// The frozen staleness budget, eight periods. The runner takes it as a
@@ -108,6 +108,7 @@ fn virtual_time_runs_are_exactly_on_schedule_and_reproducible() {
         cycles: 500,
         period_us: PERIOD,
         watchdog_timeout_us: WATCHDOG_US,
+        control_thread_policy: ThreadPolicy::TimeConstraint,
         mode: Mode::Virtual,
     };
     let mut bus_a = SimBus::new(20260909, FaultSchedule::clean());
@@ -153,6 +154,7 @@ fn the_can_corrupt_schedule_produces_one_rejection_per_injected_frame() {
             cycles: 300,
             period_us: PERIOD,
             watchdog_timeout_us: WATCHDOG_US,
+            control_thread_policy: ThreadPolicy::TimeConstraint,
             mode: Mode::Virtual,
         },
         None,
@@ -200,6 +202,7 @@ fn a_dropped_cycle_models_a_silent_sensor_and_produces_no_rejection() {
             cycles: 300,
             period_us: PERIOD,
             watchdog_timeout_us: WATCHDOG_US,
+            control_thread_policy: ThreadPolicy::TimeConstraint,
             mode: Mode::Virtual,
         },
         None,
@@ -241,6 +244,7 @@ fn enough_consecutive_silent_periods_do_trip_the_watchdog() {
             cycles: 300,
             period_us: PERIOD,
             watchdog_timeout_us: WATCHDOG_US,
+            control_thread_policy: ThreadPolicy::TimeConstraint,
             mode: Mode::Virtual,
         },
         None,
@@ -255,4 +259,77 @@ fn enough_consecutive_silent_periods_do_trip_the_watchdog() {
     // in its safe state regardless.
     assert!(out.actuator_zero_since_trip);
     assert_eq!(out.last_actuator, 0.0);
+}
+
+#[test]
+fn a_thread_policy_name_round_trips_and_an_unknown_one_is_refused() {
+    // The manifest names both sides' scheduling policies, so an unrecognised
+    // name has to stop the run. Falling back to a default would produce a
+    // result file labelled with an experiment the binary did not perform.
+    assert_eq!(
+        ThreadPolicy::from_manifest("mach-time-constraint"),
+        Ok(ThreadPolicy::TimeConstraint)
+    );
+    assert_eq!(
+        ThreadPolicy::from_manifest("default-timeshare"),
+        Ok(ThreadPolicy::DefaultTimeshare)
+    );
+    assert_eq!(
+        ThreadPolicy::TimeConstraint.as_str(),
+        "mach-time-constraint"
+    );
+    assert_eq!(ThreadPolicy::DefaultTimeshare.as_str(), "default-timeshare");
+    assert!(ThreadPolicy::from_manifest("sched-deadline").is_err());
+    assert!(ThreadPolicy::from_manifest("").is_err());
+}
+
+#[test]
+fn the_hog_window_split_accounts_for_every_cycle_exactly_once() {
+    use fieldbus_host::bus::{FaultSchedule, SimBus};
+    use fieldbus_host::runner::{self, HogWindow};
+
+    // The attribution bookkeeping, checked where the clock is exact. Virtual
+    // time cannot jitter and cannot miss, so what this asserts is only that
+    // every cycle is counted on exactly one side of the window boundary, which
+    // is the thing that would silently ruin an attribution claim if it were
+    // off by one.
+    let mut bus = SimBus::new(20260909, FaultSchedule::clean());
+    let out = runner::run(
+        &mut bus,
+        RunConfig {
+            cycles: 100,
+            period_us: PERIOD,
+            watchdog_timeout_us: WATCHDOG_US,
+            control_thread_policy: ThreadPolicy::DefaultTimeshare,
+            mode: Mode::Virtual,
+        },
+        Some(HogWindow {
+            start_cycle: 30,
+            end_cycle: 70,
+            threads: 2,
+            policy: ThreadPolicy::TimeConstraint,
+        }),
+    );
+
+    let hog = out.hog.expect("a hog run must report its hog");
+    assert_eq!(hog.threads, 2);
+    assert_eq!(hog.start_cycle, 30);
+    assert_eq!(hog.end_cycle, 70);
+    assert_eq!(hog.jitter_inside_window.count(), 40);
+    assert_eq!(hog.jitter_outside_window.count(), 60);
+    assert_eq!(
+        hog.jitter_inside_window.count() + hog.jitter_outside_window.count(),
+        out.jitter.count(),
+        "every cycle must be counted on exactly one side of the window"
+    );
+    assert_eq!(
+        hog.misses_inside_window + hog.misses_outside_window,
+        out.jitter.missed_deadlines()
+    );
+    assert_eq!(out.jitter.missed_deadlines(), 0, "virtual time cannot miss");
+
+    // The two sides of the priority relation the control rests on are recorded
+    // rather than assumed, so a reader can check it held.
+    assert_eq!(out.control_thread_policy, ThreadPolicy::DefaultTimeshare);
+    assert_eq!(hog.policy, ThreadPolicy::TimeConstraint);
 }

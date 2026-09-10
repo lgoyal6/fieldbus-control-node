@@ -140,6 +140,64 @@ impl PeriodLedger {
     }
 }
 
+/// Which scheduling policy a thread asks the operating system for.
+///
+/// Two values, because the `cpu-hog` control needs the two sides of the
+/// machine to be in different scheduling bands and every other run needs them
+/// in the same one. Which value each side uses is read from
+/// `manifest/frozen.json`, never chosen here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThreadPolicy {
+    /// Request the Mach time-constraint policy (`SCHED_FIFO` on Linux). This
+    /// is what every positive run asks for and what v1 gave both sides.
+    TimeConstraint,
+    /// Request nothing at all and run in the platform's default timeshare
+    /// band. Used by the control thread on the `cpu-hog` control run only, so
+    /// that the hog is in a strictly higher band than the loop it is meant to
+    /// disturb.
+    DefaultTimeshare,
+}
+
+impl ThreadPolicy {
+    /// The stable name used in `manifest/frozen.json` and in `results/`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ThreadPolicy::TimeConstraint => "mach-time-constraint",
+            ThreadPolicy::DefaultTimeshare => "default-timeshare",
+        }
+    }
+
+    /// Parses a policy name from the frozen manifest.
+    ///
+    /// An unknown name is an error rather than a fallback: a manifest that
+    /// names a policy this binary does not implement is a manifest describing
+    /// a different experiment, and running anyway would produce numbers
+    /// labelled with the wrong one.
+    pub fn from_manifest(name: &str) -> Result<ThreadPolicy, String> {
+        match name {
+            "mach-time-constraint" => Ok(ThreadPolicy::TimeConstraint),
+            "default-timeshare" => Ok(ThreadPolicy::DefaultTimeshare),
+            other => Err(format!(
+                "manifest names an unknown thread policy {other:?}; this binary implements \
+                 \"mach-time-constraint\" and \"default-timeshare\""
+            )),
+        }
+    }
+
+    /// Applies the policy to the calling thread and reports what happened.
+    pub fn apply(&self, period_us: u64) -> SchedulingReport {
+        match self {
+            ThreadPolicy::TimeConstraint => request_realtime_policy(period_us),
+            ThreadPolicy::DefaultTimeshare => SchedulingReport {
+                requested: "none: the default timeshare policy".to_string(),
+                granted: false,
+                detail: "no thread_policy_set call was made on this thread".to_string(),
+                qos_class: qos_class_of_current_thread(),
+            },
+        }
+    }
+}
+
 /// Whether the elevated scheduling policy was asked for and whether it stuck.
 #[derive(Debug, Clone)]
 pub struct SchedulingReport {
@@ -149,16 +207,62 @@ pub struct SchedulingReport {
     pub granted: bool,
     /// The return code or reason, verbatim.
     pub detail: String,
+    /// The QoS class the thread ended up in, read back from the operating
+    /// system after the request. Recorded rather than assumed: it is the half
+    /// of the priority relation that the request itself does not state, and
+    /// on macOS a thread granted the time-constraint policy leaves the QoS
+    /// bands entirely, which is exactly the fact the `cpu-hog` control rests
+    /// on.
+    pub qos_class: String,
 }
 
 impl SchedulingReport {
     /// The single-line form written into `results/` as `scheduling_policy`.
     pub fn summary(&self) -> String {
         format!(
-            "requested={}, granted={}, detail={}",
-            self.requested, self.granted, self.detail
+            "requested={}, granted={}, detail={}, qos_class={}",
+            self.requested, self.granted, self.detail, self.qos_class
         )
     }
+}
+
+/// The QoS class of the calling thread, read back from the kernel.
+///
+/// `pthread_get_qos_class_np` is not in the `libc` crate, so it is declared
+/// here. It is a read of the calling thread's own state and cannot fail in a
+/// way that matters; a failure is reported as unknown rather than fatal.
+#[cfg(target_os = "macos")]
+pub fn qos_class_of_current_thread() -> String {
+    extern "C" {
+        fn pthread_get_qos_class_np(
+            thread: libc::pthread_t,
+            qos_class: *mut u32,
+            relative_priority: *mut i32,
+        ) -> i32;
+    }
+    let mut class: u32 = 0;
+    let mut relative: i32 = 0;
+    let rc = unsafe { pthread_get_qos_class_np(libc::pthread_self(), &mut class, &mut relative) };
+    if rc != 0 {
+        return format!("unknown (pthread_get_qos_class_np rc={rc})");
+    }
+    // Values from <sys/qos.h>.
+    let name = match class {
+        0x21 => "QOS_CLASS_USER_INTERACTIVE",
+        0x19 => "QOS_CLASS_USER_INITIATED",
+        0x15 => "QOS_CLASS_DEFAULT",
+        0x11 => "QOS_CLASS_UTILITY",
+        0x09 => "QOS_CLASS_BACKGROUND",
+        0x00 => "QOS_CLASS_UNSPECIFIED",
+        _ => "unrecognised",
+    };
+    format!("{name} (0x{class:02x}), relative_priority={relative}")
+}
+
+/// No QoS classes outside macOS.
+#[cfg(not(target_os = "macos"))]
+pub fn qos_class_of_current_thread() -> String {
+    "not applicable on this platform".to_string()
 }
 
 /// Requests an elevated scheduling policy for the calling thread.
@@ -182,6 +286,7 @@ pub fn request_realtime_policy(period_us: u64) -> SchedulingReport {
                 requested: "mach THREAD_TIME_CONSTRAINT_POLICY".to_string(),
                 granted: false,
                 detail: format!("mach_timebase_info failed, rc={rc}"),
+                qos_class: qos_class_of_current_thread(),
             };
         }
         (tb.numer as u64, tb.denom as u64)
@@ -222,6 +327,7 @@ pub fn request_realtime_policy(period_us: u64) -> SchedulingReport {
         ),
         granted: rc == libc::KERN_SUCCESS,
         detail: format!("thread_policy_set rc={rc}"),
+        qos_class: qos_class_of_current_thread(),
     }
 }
 
@@ -242,6 +348,7 @@ pub fn request_realtime_policy(_period_us: u64) -> SchedulingReport {
         // on a CI runner and is reported as such rather than worked around.
         granted: rc == 0,
         detail: format!("pthread_setschedparam rc={rc}"),
+        qos_class: qos_class_of_current_thread(),
     }
 }
 
@@ -252,6 +359,7 @@ pub fn request_realtime_policy(_period_us: u64) -> SchedulingReport {
         requested: "none".to_string(),
         granted: false,
         detail: "no elevated scheduling policy is implemented for this platform".to_string(),
+        qos_class: qos_class_of_current_thread(),
     }
 }
 
@@ -262,6 +370,10 @@ pub struct RunConfig {
     pub cycles: u64,
     /// Period length in microseconds.
     pub period_us: u64,
+    /// What the control thread asks the scheduler for. Every positive run
+    /// asks for the time-constraint policy; the `cpu-hog` control run is the
+    /// only thing in this repository that does not.
+    pub control_thread_policy: ThreadPolicy,
     /// Sensor staleness budget in microseconds, read from the frozen manifest
     /// and handed to the node rather than taken from a constant.
     pub watchdog_timeout_us: u64,
@@ -278,6 +390,10 @@ pub struct HogWindow {
     pub end_cycle: u64,
     /// How many spinners to spawn.
     pub threads: usize,
+    /// What each spinner asks the scheduler for. For the control to mean
+    /// what it claims, this must be a strictly higher band than
+    /// [`RunConfig::control_thread_policy`].
+    pub policy: ThreadPolicy,
 }
 
 /// Everything one run produced.
@@ -304,26 +420,47 @@ pub struct RunOutcome {
     pub actuator_zero_since_trip: bool,
     /// The last commanded actuator value.
     pub last_actuator: f32,
-    /// Whether the elevated scheduling policy was granted.
+    /// What the control thread asked the scheduler for.
+    pub control_thread_policy: ThreadPolicy,
+    /// Whether that request was granted.
     pub scheduling: SchedulingReport,
     /// Wall-clock length of the run in microseconds.
     pub wall_us: u64,
-    /// For a `cpu-hog` run: how many spinners were spawned and how many had
-    /// the elevated policy granted. `None` for every other run.
+    /// For a `cpu-hog` run: what the contention was and what it did, split by
+    /// whether a cycle fell inside the hog window. `None` for every other run.
     pub hog: Option<HogOutcome>,
 }
 
-/// What the deliberate contention actually consisted of.
-#[derive(Debug, Clone, Copy)]
+/// What the deliberate contention actually consisted of, and what it did.
+///
+/// The attribution fields are the point. The run's own head and tail are
+/// uncontended and run under exactly the same scheduling policy as the
+/// contended middle, so they are a within-run baseline: whatever separates
+/// inside from outside is the hog, and whatever they share is not.
+#[derive(Debug, Clone)]
 pub struct HogOutcome {
     /// Spinners spawned.
     pub threads: usize,
-    /// Spinners that had the elevated scheduling policy granted.
+    /// What each spinner asked the scheduler for.
+    pub policy: ThreadPolicy,
+    /// The request, named the way the operating system names it.
+    pub policy_requested: String,
+    /// Spinners that had that policy granted.
     pub policy_granted: usize,
+    /// The QoS class a spinner ended up in, read back from the kernel.
+    pub qos_class: String,
     /// First cycle they ran on.
     pub start_cycle: u64,
     /// First cycle after they were stopped.
     pub end_cycle: u64,
+    /// Deadline misses at cycles inside the window.
+    pub misses_inside_window: u64,
+    /// Deadline misses at cycles outside it.
+    pub misses_outside_window: u64,
+    /// Wake jitter of cycles inside the window.
+    pub jitter_inside_window: JitterStats,
+    /// Wake jitter of cycles outside it.
+    pub jitter_outside_window: JitterStats,
 }
 
 /// Runs the periodic loop.
@@ -335,7 +472,7 @@ pub struct HogOutcome {
 /// reading that produced it.
 pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) -> RunOutcome {
     let scheduling = match cfg.mode {
-        Mode::RealTime => request_realtime_policy(cfg.period_us),
+        Mode::RealTime => cfg.control_thread_policy.apply(cfg.period_us),
         // Asking for a real-time policy in virtual time would be theatre: the
         // loop never sleeps and never competes for a core on a deadline.
         Mode::Virtual => SchedulingReport {
@@ -343,6 +480,7 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
             granted: false,
             detail: "virtual-time mode does not sleep, so no scheduling policy is requested"
                 .to_string(),
+            qos_class: qos_class_of_current_thread(),
         },
     };
 
@@ -351,10 +489,15 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
     // loop the only operations on it are activate and deactivate, both of
     // which are a lock, a store and a notify.
     let mut hog = hog_window.map(|w| {
-        let mut h = CpuHog::new(w.threads);
+        let mut h = CpuHog::new(w.threads, w.policy);
         h.spawn(cfg.period_us);
         (w, h)
     });
+    // Only allocated for a hog run, and only ever read for one.
+    let mut inside_jitter = JitterStats::new();
+    let mut outside_jitter = JitterStats::new();
+    let mut misses_inside = 0u64;
+    let mut misses_outside = 0u64;
     let mut node = ControlNode::with_watchdog_timeout(0, cfg.watchdog_timeout_us);
     let mut jitter = JitterStats::new();
     let mut ledger = PeriodLedger::new(cfg.period_us);
@@ -400,6 +543,19 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         let jitter_us = start_us.saturating_sub(scheduled_us);
         jitter.record(jitter_us);
 
+        // Attribution. A cycle is inside the window if the spinners were
+        // running when it started. Splitting the same measurement two ways is
+        // what makes the run its own baseline, rather than something to be
+        // compared against a different run on a differently loaded machine.
+        let in_window = hog
+            .as_ref()
+            .is_some_and(|(w, _)| cycle >= w.start_cycle && cycle < w.end_cycle);
+        if in_window {
+            inside_jitter.record(jitter_us);
+        } else {
+            outside_jitter.record(jitter_us);
+        }
+
         // Whole periods that went by with no cycle starting in them. Each one
         // is a period in which the actuator received no command. The ledger
         // makes sure a given period is counted once, not once per cycle that
@@ -407,6 +563,11 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         let skipped = ledger.account_cycle_start(start_us);
         for k in 0..skipped {
             jitter.record_miss();
+            if in_window {
+                misses_inside += 1;
+            } else {
+                misses_outside += 1;
+            }
             misses.push(Miss {
                 cycle,
                 kind: MissKind::SkippedPeriod,
@@ -446,6 +607,11 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         let deadline_us = scheduled_us + cfg.period_us;
         if end_us > deadline_us {
             jitter.record_miss();
+            if in_window {
+                misses_inside += 1;
+            } else {
+                misses_outside += 1;
+            }
             misses.push(Miss {
                 cycle,
                 kind: MissKind::WorkOverran,
@@ -462,9 +628,16 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         h.stop();
         HogOutcome {
             threads: h.threads(),
+            policy: w.policy,
+            policy_requested: h.policy_requested(),
             policy_granted: h.policy_granted(),
+            qos_class: h.qos_class(),
             start_cycle: w.start_cycle,
             end_cycle: w.end_cycle,
+            misses_inside_window: misses_inside,
+            misses_outside_window: misses_outside,
+            jitter_inside_window: inside_jitter,
+            jitter_outside_window: outside_jitter,
         }
     });
 
@@ -479,6 +652,7 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         trip_cycle,
         actuator_zero_since_trip,
         last_actuator,
+        control_thread_policy: cfg.control_thread_policy,
         scheduling,
         wall_us: origin.elapsed().as_micros() as u64,
         hog: hog_outcome,
