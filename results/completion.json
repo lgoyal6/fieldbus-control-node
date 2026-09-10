@@ -1,0 +1,2170 @@
+{
+  "what": "Machine-readable evidence for the timing, framing and watchdog claims in this repository. Produced by scripts/run_completion_gate.sh from a committed tree. Every number here comes from a simulated in-process CAN bus and a simulated sensor on one Apple Silicon Mac. No CAN hardware, no microcontroller execution, no hardware in the loop, no RTOS.",
+  "manifest": {
+    "path": "manifest/frozen.json",
+    "sha256": "6894f1de0879e48252f4fb8174e090ef13e70b945feea726e6c7ed5e90f20e93"
+  },
+  "environment": {
+    "os": "macos",
+    "arch": "aarch64",
+    "cpu_model": "Apple M3 Pro",
+    "core_count": 11,
+    "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0, qos_class=QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0",
+    "mode": "simulated",
+    "clock_mode": "real-time",
+    "host_count": 1,
+    "physical_can_hardware": false,
+    "hardware_in_the_loop": false,
+    "rtos": false,
+    "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+  },
+  "target_period_us": 10000,
+  "cycles": 10000,
+  "positive_runs": [
+    {
+      "run_id": "positive-1",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0, qos_class=QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "6894f1de0879e48252f4fb8174e090ef13e70b945feea726e6c7ed5e90f20e93"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 99990010,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 20,
+        "p99": 30,
+        "max": 3789,
+        "min": 0,
+        "mean": 9,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 0,
+        "explained": [],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 10000,
+        "rejected": 0,
+        "rejected_by_reason": {
+          "bad_crc": 0,
+          "bad_length": 0,
+          "bad_reserved": 0,
+          "duplicate": 0,
+          "out_of_order": 0,
+          "out_of_range": 0,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": false,
+        "reason": null,
+        "reaction_time_us": null,
+        "reaction_time_definition": "tripped_at_us - last_seen_us: the whole path from the timestamp of the last accepted sensor frame to the check that latched the safe state. Bounded by the sensor-freeze control's max_reaction_time_us in the frozen manifest.",
+        "reaction_bound_us": 100000,
+        "reaction_margin_us": null,
+        "overshoot_past_budget_us": null,
+        "trip_cycle": null,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 80000
+      },
+      "control_thread_policy": {
+        "policy": "mach-time-constraint",
+        "requested": "mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0",
+        "granted": true,
+        "detail": "thread_policy_set rc=0",
+        "qos_class": "QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0"
+      },
+      "hog": null,
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "false",
+            "passed": true
+          }
+        ],
+        "pass": true
+      },
+      "control": null
+    },
+    {
+      "run_id": "positive-2",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0, qos_class=QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "6894f1de0879e48252f4fb8174e090ef13e70b945feea726e6c7ed5e90f20e93"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 99990012,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 20,
+        "p99": 30,
+        "max": 142,
+        "min": 0,
+        "mean": 9,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 0,
+        "explained": [],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 10000,
+        "rejected": 0,
+        "rejected_by_reason": {
+          "bad_crc": 0,
+          "bad_length": 0,
+          "bad_reserved": 0,
+          "duplicate": 0,
+          "out_of_order": 0,
+          "out_of_range": 0,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": false,
+        "reason": null,
+        "reaction_time_us": null,
+        "reaction_time_definition": "tripped_at_us - last_seen_us: the whole path from the timestamp of the last accepted sensor frame to the check that latched the safe state. Bounded by the sensor-freeze control's max_reaction_time_us in the frozen manifest.",
+        "reaction_bound_us": 100000,
+        "reaction_margin_us": null,
+        "overshoot_past_budget_us": null,
+        "trip_cycle": null,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 80000
+      },
+      "control_thread_policy": {
+        "policy": "mach-time-constraint",
+        "requested": "mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0",
+        "granted": true,
+        "detail": "thread_policy_set rc=0",
+        "qos_class": "QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0"
+      },
+      "hog": null,
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "false",
+            "passed": true
+          }
+        ],
+        "pass": true
+      },
+      "control": null
+    }
+  ],
+  "negative_controls": [
+    {
+      "run_id": "cpu-hog",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=none: the default timeshare policy, granted=false, detail=no thread_policy_set call was made on this thread, qos_class=QOS_CLASS_USER_INTERACTIVE (0x21), relative_priority=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "6894f1de0879e48252f4fb8174e090ef13e70b945feea726e6c7ed5e90f20e93"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 100009613,
+      "jitter_us": {
+        "p50": 2010,
+        "p95": 2480,
+        "p99": 40000,
+        "max": 1177505,
+        "min": 0,
+        "mean": 13235,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": true,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 518,
+        "explained": [
+          {
+            "cycle": 626,
+            "kind": "skipped_period",
+            "jitter_us": 13681,
+            "work_us": 0,
+            "overrun_us": 13681
+          },
+          {
+            "cycle": 626,
+            "kind": "work_overran",
+            "jitter_us": 13681,
+            "work_us": 4424,
+            "overrun_us": 8105
+          },
+          {
+            "cycle": 1551,
+            "kind": "skipped_period",
+            "jitter_us": 16632,
+            "work_us": 0,
+            "overrun_us": 16632
+          },
+          {
+            "cycle": 1551,
+            "kind": "work_overran",
+            "jitter_us": 16632,
+            "work_us": 357,
+            "overrun_us": 6989
+          },
+          {
+            "cycle": 1555,
+            "kind": "skipped_period",
+            "jitter_us": 14534,
+            "work_us": 0,
+            "overrun_us": 14534
+          },
+          {
+            "cycle": 1555,
+            "kind": "work_overran",
+            "jitter_us": 14534,
+            "work_us": 17,
+            "overrun_us": 4551
+          },
+          {
+            "cycle": 3002,
+            "kind": "skipped_period",
+            "jitter_us": 40957,
+            "work_us": 0,
+            "overrun_us": 40957
+          },
+          {
+            "cycle": 3002,
+            "kind": "skipped_period",
+            "jitter_us": 40957,
+            "work_us": 0,
+            "overrun_us": 30957
+          },
+          {
+            "cycle": 3002,
+            "kind": "skipped_period",
+            "jitter_us": 40957,
+            "work_us": 0,
+            "overrun_us": 20957
+          },
+          {
+            "cycle": 3002,
+            "kind": "skipped_period",
+            "jitter_us": 40957,
+            "work_us": 0,
+            "overrun_us": 10957
+          },
+          {
+            "cycle": 3002,
+            "kind": "work_overran",
+            "jitter_us": 40957,
+            "work_us": 428,
+            "overrun_us": 31385
+          },
+          {
+            "cycle": 3003,
+            "kind": "work_overran",
+            "jitter_us": 31386,
+            "work_us": 1,
+            "overrun_us": 21387
+          },
+          {
+            "cycle": 3004,
+            "kind": "work_overran",
+            "jitter_us": 21387,
+            "work_us": 0,
+            "overrun_us": 11387
+          },
+          {
+            "cycle": 3005,
+            "kind": "work_overran",
+            "jitter_us": 11387,
+            "work_us": 0,
+            "overrun_us": 1387
+          },
+          {
+            "cycle": 3020,
+            "kind": "skipped_period",
+            "jitter_us": 10059,
+            "work_us": 0,
+            "overrun_us": 10059
+          },
+          {
+            "cycle": 3020,
+            "kind": "work_overran",
+            "jitter_us": 10059,
+            "work_us": 4,
+            "overrun_us": 63
+          },
+          {
+            "cycle": 3047,
+            "kind": "skipped_period",
+            "jitter_us": 46902,
+            "work_us": 0,
+            "overrun_us": 46902
+          },
+          {
+            "cycle": 3047,
+            "kind": "skipped_period",
+            "jitter_us": 46902,
+            "work_us": 0,
+            "overrun_us": 36902
+          },
+          {
+            "cycle": 3047,
+            "kind": "skipped_period",
+            "jitter_us": 46902,
+            "work_us": 0,
+            "overrun_us": 26902
+          },
+          {
+            "cycle": 3047,
+            "kind": "skipped_period",
+            "jitter_us": 46902,
+            "work_us": 0,
+            "overrun_us": 16902
+          },
+          {
+            "cycle": 3047,
+            "kind": "work_overran",
+            "jitter_us": 46902,
+            "work_us": 12,
+            "overrun_us": 36914
+          },
+          {
+            "cycle": 3048,
+            "kind": "work_overran",
+            "jitter_us": 36915,
+            "work_us": 0,
+            "overrun_us": 26915
+          },
+          {
+            "cycle": 3049,
+            "kind": "work_overran",
+            "jitter_us": 26915,
+            "work_us": 1,
+            "overrun_us": 16916
+          },
+          {
+            "cycle": 3050,
+            "kind": "work_overran",
+            "jitter_us": 16916,
+            "work_us": 0,
+            "overrun_us": 6916
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 1023280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 1013280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 1003280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 993280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 983280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 973280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 963280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 953280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 943280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 933280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 923280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 913280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 903280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 893280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 883280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 873280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 863280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 853280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 843280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 833280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 823280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 813280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 803280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 793280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 783280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 773280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 763280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 753280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 743280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 733280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 723280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 713280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 703280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 693280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 683280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 673280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 663280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 653280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 643280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 633280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 623280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 613280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 603280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 593280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 583280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 573280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 563280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 553280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 543280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 533280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 523280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 513280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 503280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 493280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 483280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 473280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 463280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 453280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 443280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 433280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 423280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 413280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 403280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 393280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 383280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 373280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 363280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 353280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 343280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 333280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 323280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 313280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 303280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 293280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 283280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 273280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 263280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 253280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 243280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 233280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 223280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 213280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 203280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 193280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 183280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 173280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 163280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 153280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 143280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 133280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 123280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 113280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 103280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 93280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 83280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 73280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 63280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 53280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 43280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 33280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 23280
+          },
+          {
+            "cycle": 3057,
+            "kind": "skipped_period",
+            "jitter_us": 1023280,
+            "work_us": 0,
+            "overrun_us": 13280
+          },
+          {
+            "cycle": 3057,
+            "kind": "work_overran",
+            "jitter_us": 1023280,
+            "work_us": 23,
+            "overrun_us": 1013303
+          },
+          {
+            "cycle": 3058,
+            "kind": "work_overran",
+            "jitter_us": 1013304,
+            "work_us": 0,
+            "overrun_us": 1003304
+          },
+          {
+            "cycle": 3059,
+            "kind": "work_overran",
+            "jitter_us": 1003304,
+            "work_us": 0,
+            "overrun_us": 993304
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1177505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1167505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1157505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1147505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1137505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1127505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1117505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1107505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1097505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1087505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1077505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1067505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1057505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1047505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1037505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1027505
+          },
+          {
+            "cycle": 3060,
+            "kind": "skipped_period",
+            "jitter_us": 1177505,
+            "work_us": 0,
+            "overrun_us": 1017505
+          },
+          {
+            "cycle": 3060,
+            "kind": "work_overran",
+            "jitter_us": 1177505,
+            "work_us": 7,
+            "overrun_us": 1167512
+          },
+          {
+            "cycle": 3061,
+            "kind": "work_overran",
+            "jitter_us": 1167512,
+            "work_us": 0,
+            "overrun_us": 1157512
+          },
+          {
+            "cycle": 3062,
+            "kind": "work_overran",
+            "jitter_us": 1157512,
+            "work_us": 1,
+            "overrun_us": 1147513
+          },
+          {
+            "cycle": 3063,
+            "kind": "work_overran",
+            "jitter_us": 1147513,
+            "work_us": 0,
+            "overrun_us": 1137513
+          },
+          {
+            "cycle": 3064,
+            "kind": "work_overran",
+            "jitter_us": 1137513,
+            "work_us": 0,
+            "overrun_us": 1127513
+          },
+          {
+            "cycle": 3065,
+            "kind": "work_overran",
+            "jitter_us": 1127513,
+            "work_us": 1,
+            "overrun_us": 1117514
+          },
+          {
+            "cycle": 3066,
+            "kind": "work_overran",
+            "jitter_us": 1117514,
+            "work_us": 0,
+            "overrun_us": 1107514
+          },
+          {
+            "cycle": 3067,
+            "kind": "work_overran",
+            "jitter_us": 1107514,
+            "work_us": 0,
+            "overrun_us": 1097514
+          },
+          {
+            "cycle": 3068,
+            "kind": "work_overran",
+            "jitter_us": 1097514,
+            "work_us": 0,
+            "overrun_us": 1087514
+          },
+          {
+            "cycle": 3069,
+            "kind": "work_overran",
+            "jitter_us": 1087514,
+            "work_us": 0,
+            "overrun_us": 1077514
+          },
+          {
+            "cycle": 3070,
+            "kind": "work_overran",
+            "jitter_us": 1077514,
+            "work_us": 1,
+            "overrun_us": 1067515
+          },
+          {
+            "cycle": 3071,
+            "kind": "work_overran",
+            "jitter_us": 1067515,
+            "work_us": 0,
+            "overrun_us": 1057515
+          },
+          {
+            "cycle": 3072,
+            "kind": "work_overran",
+            "jitter_us": 1057515,
+            "work_us": 0,
+            "overrun_us": 1047515
+          },
+          {
+            "cycle": 3073,
+            "kind": "work_overran",
+            "jitter_us": 1047515,
+            "work_us": 0,
+            "overrun_us": 1037515
+          },
+          {
+            "cycle": 3074,
+            "kind": "work_overran",
+            "jitter_us": 1037515,
+            "work_us": 1,
+            "overrun_us": 1027516
+          },
+          {
+            "cycle": 3075,
+            "kind": "work_overran",
+            "jitter_us": 1027516,
+            "work_us": 0,
+            "overrun_us": 1017516
+          },
+          {
+            "cycle": 3076,
+            "kind": "work_overran",
+            "jitter_us": 1017516,
+            "work_us": 0,
+            "overrun_us": 1007516
+          },
+          {
+            "cycle": 3077,
+            "kind": "work_overran",
+            "jitter_us": 1007516,
+            "work_us": 0,
+            "overrun_us": 997516
+          },
+          {
+            "cycle": 3078,
+            "kind": "work_overran",
+            "jitter_us": 997516,
+            "work_us": 0,
+            "overrun_us": 987516
+          },
+          {
+            "cycle": 3079,
+            "kind": "work_overran",
+            "jitter_us": 987516,
+            "work_us": 1,
+            "overrun_us": 977517
+          },
+          {
+            "cycle": 3080,
+            "kind": "work_overran",
+            "jitter_us": 977517,
+            "work_us": 0,
+            "overrun_us": 967517
+          },
+          {
+            "cycle": 3081,
+            "kind": "work_overran",
+            "jitter_us": 967517,
+            "work_us": 0,
+            "overrun_us": 957517
+          },
+          {
+            "cycle": 3082,
+            "kind": "work_overran",
+            "jitter_us": 957517,
+            "work_us": 0,
+            "overrun_us": 947517
+          },
+          {
+            "cycle": 3083,
+            "kind": "work_overran",
+            "jitter_us": 947517,
+            "work_us": 0,
+            "overrun_us": 937517
+          },
+          {
+            "cycle": 3084,
+            "kind": "work_overran",
+            "jitter_us": 937518,
+            "work_us": 0,
+            "overrun_us": 927518
+          },
+          {
+            "cycle": 3085,
+            "kind": "work_overran",
+            "jitter_us": 927518,
+            "work_us": 0,
+            "overrun_us": 917518
+          },
+          {
+            "cycle": 3086,
+            "kind": "work_overran",
+            "jitter_us": 917518,
+            "work_us": 0,
+            "overrun_us": 907518
+          },
+          {
+            "cycle": 3087,
+            "kind": "work_overran",
+            "jitter_us": 907518,
+            "work_us": 0,
+            "overrun_us": 897518
+          },
+          {
+            "cycle": 3088,
+            "kind": "work_overran",
+            "jitter_us": 897518,
+            "work_us": 1,
+            "overrun_us": 887519
+          },
+          {
+            "cycle": 3089,
+            "kind": "work_overran",
+            "jitter_us": 887519,
+            "work_us": 0,
+            "overrun_us": 877519
+          },
+          {
+            "cycle": 3090,
+            "kind": "work_overran",
+            "jitter_us": 877519,
+            "work_us": 0,
+            "overrun_us": 867519
+          },
+          {
+            "cycle": 3091,
+            "kind": "work_overran",
+            "jitter_us": 867519,
+            "work_us": 0,
+            "overrun_us": 857519
+          },
+          {
+            "cycle": 3092,
+            "kind": "work_overran",
+            "jitter_us": 857519,
+            "work_us": 0,
+            "overrun_us": 847519
+          },
+          {
+            "cycle": 3093,
+            "kind": "work_overran",
+            "jitter_us": 847520,
+            "work_us": 0,
+            "overrun_us": 837520
+          },
+          {
+            "cycle": 3094,
+            "kind": "work_overran",
+            "jitter_us": 837520,
+            "work_us": 0,
+            "overrun_us": 827520
+          },
+          {
+            "cycle": 3095,
+            "kind": "work_overran",
+            "jitter_us": 827520,
+            "work_us": 0,
+            "overrun_us": 817520
+          },
+          {
+            "cycle": 3096,
+            "kind": "work_overran",
+            "jitter_us": 817520,
+            "work_us": 0,
+            "overrun_us": 807520
+          },
+          {
+            "cycle": 3097,
+            "kind": "work_overran",
+            "jitter_us": 807520,
+            "work_us": 1,
+            "overrun_us": 797521
+          },
+          {
+            "cycle": 3098,
+            "kind": "work_overran",
+            "jitter_us": 797521,
+            "work_us": 0,
+            "overrun_us": 787521
+          },
+          {
+            "cycle": 3099,
+            "kind": "work_overran",
+            "jitter_us": 787521,
+            "work_us": 0,
+            "overrun_us": 777521
+          },
+          {
+            "cycle": 3100,
+            "kind": "work_overran",
+            "jitter_us": 777521,
+            "work_us": 0,
+            "overrun_us": 767521
+          },
+          {
+            "cycle": 3101,
+            "kind": "work_overran",
+            "jitter_us": 767521,
+            "work_us": 0,
+            "overrun_us": 757521
+          },
+          {
+            "cycle": 3102,
+            "kind": "work_overran",
+            "jitter_us": 757522,
+            "work_us": 0,
+            "overrun_us": 747522
+          },
+          {
+            "cycle": 3103,
+            "kind": "work_overran",
+            "jitter_us": 747522,
+            "work_us": 0,
+            "overrun_us": 737522
+          },
+          {
+            "cycle": 3104,
+            "kind": "work_overran",
+            "jitter_us": 737522,
+            "work_us": 0,
+            "overrun_us": 727522
+          },
+          {
+            "cycle": 3105,
+            "kind": "work_overran",
+            "jitter_us": 727522,
+            "work_us": 0,
+            "overrun_us": 717522
+          },
+          {
+            "cycle": 3106,
+            "kind": "work_overran",
+            "jitter_us": 717522,
+            "work_us": 1,
+            "overrun_us": 707523
+          },
+          {
+            "cycle": 3107,
+            "kind": "work_overran",
+            "jitter_us": 707523,
+            "work_us": 0,
+            "overrun_us": 697523
+          },
+          {
+            "cycle": 3108,
+            "kind": "work_overran",
+            "jitter_us": 697523,
+            "work_us": 0,
+            "overrun_us": 687523
+          },
+          {
+            "cycle": 3109,
+            "kind": "work_overran",
+            "jitter_us": 687523,
+            "work_us": 0,
+            "overrun_us": 677523
+          },
+          {
+            "cycle": 3110,
+            "kind": "work_overran",
+            "jitter_us": 677523,
+            "work_us": 0,
+            "overrun_us": 667523
+          },
+          {
+            "cycle": 3111,
+            "kind": "work_overran",
+            "jitter_us": 667524,
+            "work_us": 0,
+            "overrun_us": 657524
+          },
+          {
+            "cycle": 3112,
+            "kind": "work_overran",
+            "jitter_us": 657524,
+            "work_us": 0,
+            "overrun_us": 647524
+          },
+          {
+            "cycle": 3113,
+            "kind": "work_overran",
+            "jitter_us": 647524,
+            "work_us": 0,
+            "overrun_us": 637524
+          }
+        ],
+        "explained_truncated": true,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 10000,
+        "rejected": 0,
+        "rejected_by_reason": {
+          "bad_crc": 0,
+          "bad_length": 0,
+          "bad_reserved": 0,
+          "duplicate": 0,
+          "out_of_order": 0,
+          "out_of_range": 0,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": false,
+        "reason": null,
+        "reaction_time_us": null,
+        "reaction_time_definition": "tripped_at_us - last_seen_us: the whole path from the timestamp of the last accepted sensor frame to the check that latched the safe state. Bounded by the sensor-freeze control's max_reaction_time_us in the frozen manifest.",
+        "reaction_bound_us": 100000,
+        "reaction_margin_us": null,
+        "overshoot_past_budget_us": null,
+        "trip_cycle": null,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 80000
+      },
+      "control_thread_policy": {
+        "policy": "default-timeshare",
+        "requested": "none: the default timeshare policy",
+        "granted": false,
+        "detail": "no thread_policy_set call was made on this thread",
+        "qos_class": "QOS_CLASS_USER_INTERACTIVE (0x21), relative_priority=0"
+      },
+      "hog": {
+        "threads": 22,
+        "policy": {
+          "policy": "mach-time-constraint",
+          "requested": "mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0",
+          "granted": true,
+          "detail": "22 of 22 spinners were granted it",
+          "qos_class": "QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0"
+        },
+        "policy_granted": 22,
+        "window_start_cycle": 3000,
+        "window_end_cycle": 7000,
+        "misses_inside_window": 512,
+        "misses_outside_window": 6,
+        "jitter_inside_window": {
+          "p50": 2010,
+          "p95": 40000,
+          "p99": 40000,
+          "max": 1177505,
+          "min": 7,
+          "mean": 30576,
+          "samples": 4000,
+          "histogram_bucket_width_us": 10,
+          "histogram_overflowed": true,
+          "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+        },
+        "jitter_outside_window": {
+          "p50": 2000,
+          "p95": 2450,
+          "p99": 2510,
+          "max": 16632,
+          "min": 0,
+          "mean": 1675,
+          "samples": 6000,
+          "histogram_bucket_width_us": 10,
+          "histogram_overflowed": false,
+          "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+        },
+        "attribution": "Cycles 3000..7000 ran with 22 spinners at the mach-time-constraint policy (22 of them granted it, QoS class QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0). The rest of the run is the same thread at the same policy with no hog, so it is this run's own baseline. Missed deadlines: 512 inside the window, 6 outside it. Wake jitter p99: 40000 us inside, 2510 us outside; max 1177505 us inside, 16632 us outside. Read the two together: a p99 that is already above the gate threshold outside the window is the control thread's own policy, not the contention, and only what separates inside from outside is the hog."
+      },
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "518",
+            "passed": false
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "40000",
+            "passed": false
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "false",
+            "passed": true
+          }
+        ],
+        "pass": false
+      },
+      "control": {
+        "id": "cpu-hog",
+        "expected": "the positive gate is violated: missed_deadlines > 0 OR p99 jitter > 1000 us",
+        "caught_checks": [
+          {
+            "name": "positive_gate_fails",
+            "expected": "false (the gate must not pass under contention)",
+            "observed": "gate pass = false",
+            "passed": true
+          },
+          {
+            "name": "hog_threads_with_policy_granted",
+            "expected": "diagnostic only, 22 spawned at policy mach-time-constraint",
+            "observed": "22 of 22 granted",
+            "passed": true
+          },
+          {
+            "name": "misses_inside_versus_outside_the_hog_window",
+            "expected": "diagnostic only: misses attributable to the hog land inside its window",
+            "observed": "512 inside, 6 outside",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_inside_versus_outside_the_hog_window",
+            "expected": "diagnostic only: the out-of-window figure is this run's own baseline for a control thread at the same policy with no hog",
+            "observed": "40000 us inside, 2510 us outside",
+            "passed": true
+          }
+        ],
+        "caught": true,
+        "note": "Caught, and attributable. 22 spinning threads at the mach-time-constraint policy (22 granted it) produced 512 missed deadlines inside the hog window against 6 outside it, with p99 wake jitter of 40000 us inside against 2510 us outside. The out-of-window figures are the same thread at the same policy with no hog, so what separates them is the contention."
+      }
+    },
+    {
+      "run_id": "can-corrupt",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0, qos_class=QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "6894f1de0879e48252f4fb8174e090ef13e70b945feea726e6c7ed5e90f20e93"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 99990014,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 30,
+        "p99": 30,
+        "max": 127,
+        "min": 0,
+        "mean": 9,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 0,
+        "explained": [],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 10000,
+        "rejected": 20,
+        "rejected_by_reason": {
+          "bad_crc": 5,
+          "bad_length": 2,
+          "bad_reserved": 0,
+          "duplicate": 5,
+          "out_of_order": 5,
+          "out_of_range": 3,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": false,
+        "reason": null,
+        "reaction_time_us": null,
+        "reaction_time_definition": "tripped_at_us - last_seen_us: the whole path from the timestamp of the last accepted sensor frame to the check that latched the safe state. Bounded by the sensor-freeze control's max_reaction_time_us in the frozen manifest.",
+        "reaction_bound_us": 100000,
+        "reaction_margin_us": null,
+        "overshoot_past_budget_us": null,
+        "trip_cycle": null,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 80000
+      },
+      "control_thread_policy": {
+        "policy": "mach-time-constraint",
+        "requested": "mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0",
+        "granted": true,
+        "detail": "thread_policy_set rc=0",
+        "qos_class": "QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0"
+      },
+      "hog": null,
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "20",
+            "passed": false
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "false",
+            "passed": true
+          }
+        ],
+        "pass": false
+      },
+      "control": {
+        "id": "can-corrupt",
+        "expected": "every injected fault is rejected under its intended reason, no legitimate frame is rejected, and the positive gate's rejected == 0 condition therefore fails",
+        "caught_checks": [
+          {
+            "name": "rejected_total",
+            "expected": "== 20",
+            "observed": "20",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.bad_crc",
+            "expected": "== 5",
+            "observed": "5",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.bad_length",
+            "expected": "== 2",
+            "observed": "2",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.bad_reserved",
+            "expected": "== 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.duplicate",
+            "expected": "== 5",
+            "observed": "5",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.out_of_order",
+            "expected": "== 5",
+            "observed": "5",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.out_of_range",
+            "expected": "== 3",
+            "observed": "3",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.unexpected_source",
+            "expected": "== 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "rejected_by_reason.unknown_pgn",
+            "expected": "== 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "accepted",
+            "expected": "== 10000",
+            "observed": "10000",
+            "passed": true
+          },
+          {
+            "name": "positive_gate_fails",
+            "expected": "false (rejected == 0 must not hold)",
+            "observed": "gate pass = false",
+            "passed": true
+          }
+        ],
+        "caught": true,
+        "note": "Caught. The exact per-reason histogram matched, which shows the validator attributed each fault to the right cause rather than merely counting more refusals."
+      }
+    },
+    {
+      "run_id": "sensor-freeze",
+      "environment": {
+        "os": "macos",
+        "arch": "aarch64",
+        "cpu_model": "Apple M3 Pro",
+        "core_count": 11,
+        "scheduling_policy": "requested=mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0, granted=true, detail=thread_policy_set rc=0, qos_class=QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0",
+        "mode": "simulated",
+        "clock_mode": "real-time",
+        "host_count": 1,
+        "physical_can_hardware": false,
+        "hardware_in_the_loop": false,
+        "rtos": false,
+        "statement": "Simulated in-process CAN bus and simulated first-order sensor plant, single host, no physical CAN hardware, not hardware in the loop, no RTOS. A POSIX-hosted periodic loop with deadline telemetry, not a hard real-time system."
+      },
+      "manifest": {
+        "path": "manifest/frozen.json",
+        "sha256": "6894f1de0879e48252f4fb8174e090ef13e70b945feea726e6c7ed5e90f20e93"
+      },
+      "target_period_us": 10000,
+      "cycles": 10000,
+      "wall_us": 99990029,
+      "jitter_us": {
+        "p50": 10,
+        "p95": 30,
+        "p99": 30,
+        "max": 85,
+        "min": 0,
+        "mean": 10,
+        "samples": 10000,
+        "histogram_bucket_width_us": 10,
+        "histogram_overflowed": false,
+        "percentile_reporting": "nearest-rank, reported as the upper edge of the containing 10 us bucket. Buckets are half-open, so a reported value r means the true value lies in [r - 10, r). An all-zero run reports every percentile as 10 while max reports 0. min and max are exact."
+      },
+      "missed_deadlines": {
+        "count": 0,
+        "explained": [],
+        "explained_truncated": false,
+        "definition": "A cycle whose work finished after its own scheduled start plus one period, plus every whole period that elapsed with no cycle executing in it."
+      },
+      "can": {
+        "accepted": 5000,
+        "rejected": 0,
+        "rejected_by_reason": {
+          "bad_crc": 0,
+          "bad_length": 0,
+          "bad_reserved": 0,
+          "duplicate": 0,
+          "out_of_order": 0,
+          "out_of_range": 0,
+          "unexpected_source": 0,
+          "unknown_pgn": 0
+        }
+      },
+      "watchdog": {
+        "tripped": true,
+        "reason": "sensor_stale",
+        "reaction_time_us": 80053,
+        "reaction_time_definition": "tripped_at_us - last_seen_us: the whole path from the timestamp of the last accepted sensor frame to the check that latched the safe state. Bounded by the sensor-freeze control's max_reaction_time_us in the frozen manifest.",
+        "reaction_bound_us": 100000,
+        "reaction_margin_us": 19947,
+        "overshoot_past_budget_us": 53,
+        "trip_cycle": 5007,
+        "actuator_zero_since_trip": true,
+        "timeout_us": 80000
+      },
+      "control_thread_policy": {
+        "policy": "mach-time-constraint",
+        "requested": "mach THREAD_TIME_CONSTRAINT_POLICY period=10000us computation=1000us constraint=5000us preemptible=0",
+        "granted": true,
+        "detail": "thread_policy_set rc=0",
+        "qos_class": "QOS_CLASS_UNSPECIFIED (0x00), relative_priority=0"
+      },
+      "hog": null,
+      "gate": {
+        "checks": [
+          {
+            "name": "missed_deadlines",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "p99_jitter_us",
+            "expected": "<= 1000",
+            "observed": "30",
+            "passed": true
+          },
+          {
+            "name": "rejected_frames",
+            "expected": "<= 0",
+            "observed": "0",
+            "passed": true
+          },
+          {
+            "name": "watchdog_tripped",
+            "expected": "false",
+            "observed": "true",
+            "passed": false
+          }
+        ],
+        "pass": false
+      },
+      "control": {
+        "id": "sensor-freeze",
+        "expected": "the safe state is entered within max_reaction_time_us of the last accepted sensor frame, the reason persists to the end of the run, the actuator is commanded to 0 from the trip onward, and the positive gate's watchdog condition therefore fails",
+        "caught_checks": [
+          {
+            "name": "watchdog_tripped",
+            "expected": "true",
+            "observed": "true",
+            "passed": true
+          },
+          {
+            "name": "watchdog_reason",
+            "expected": "sensor_stale",
+            "observed": "sensor_stale",
+            "passed": true
+          },
+          {
+            "name": "reaction_time_us",
+            "expected": "<= 100000 (from the timestamp of the last accepted sensor frame to the latched safe state)",
+            "observed": "80053, margin 19947 us",
+            "passed": true
+          },
+          {
+            "name": "actuator_zero_since_trip",
+            "expected": "true",
+            "observed": "true",
+            "passed": true
+          },
+          {
+            "name": "safe_state_persists_to_end_of_run",
+            "expected": "true",
+            "observed": "true",
+            "passed": true
+          },
+          {
+            "name": "positive_gate_fails",
+            "expected": "false (the watchdog must not be allowed to trip)",
+            "observed": "gate pass = false",
+            "passed": true
+          },
+          {
+            "name": "freeze_cycle_from_manifest",
+            "expected": "sensor stops at cycle 5000",
+            "observed": "trip cycle Some(5007)",
+            "passed": true
+          }
+        ],
+        "caught": true,
+        "note": "Caught. The safe state was entered 80053 us after the last accepted sensor frame, 19947 us inside the 100000 us bound, and the latch held to the end of the run with the actuator commanded to the safe value throughout, so the safe state is a state and not a momentary log line."
+      }
+    }
+  ],
+  "summary": {
+    "positive_runs_passed": 2,
+    "positive_runs_total": 2,
+    "controls_caught": 3,
+    "controls_total": 3,
+    "overall_pass": true
+  },
+  "limitations": [
+    "The CAN bus is simulated in-process. No CAN adapter, transceiver or physical bus was involved, and no frame left this machine.",
+    "The sensor is a simulated first-order plant driven by the node's own command. There is no physical sensor and no physical actuator.",
+    "This is not hardware in the loop. No device, board, QEMU instance or virtual interface stands in for hardware in these numbers.",
+    "Single host. Every number was produced on one Apple Silicon Mac under macOS with other processes running; there is no cross-machine or cross-platform comparison here.",
+    "Not a hard real-time system. This is a POSIX-hosted periodic loop with deadline telemetry. The Mach time-constraint policy is requested as a best effort and the grant result is recorded; it is not a guarantee, and macOS may demote the thread.",
+    "No RTOS, no ISO 26262 process, no ASIL classification, no automotive qualification and no certification of any kind.",
+    "fieldbus-core is compiled for thumbv7em-none-eabihf as a cross-compile check only. It has never been flashed to or executed on a microcontroller, and no timing figure here describes a microcontroller.",
+    "The SocketCAN backend uses real AF_CAN sockets but is exercised only against a virtual vcan0 interface on a GitHub Actions ubuntu runner. A virtual interface is a kernel loopback, not a bus.",
+    "Jitter percentiles are reported as the upper edge of a 10 us histogram bucket. They are bounds, not exact samples; min and max are exact.",
+    "The cpu-hog control, and only that control, runs its control thread at the default timeshare policy so that the hog threads can be in a strictly higher scheduling band. On this host that demotion by itself costs about 2 ms of wake latency, which already exceeds the frozen 1000 us p99 threshold before any spinner starts. A p99 violation on that run is therefore not evidence of contention; the missed deadlines and the gap between the in-window and out-of-window figures are. Both positive runs request the time-constraint policy and are unaffected.",
+    "watchdog.reaction_time_us means something different here than it did in results/v1/. It is now the whole path from the last accepted sensor frame to the latched safe state, which is the quantity the 100 ms requirement bounds. What v1 reported under that name is kept as overshoot_past_budget_us."
+  ]
+}
