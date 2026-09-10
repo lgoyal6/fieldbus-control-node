@@ -20,8 +20,10 @@ use sha2::{Digest, Sha256};
 use fieldbus_core::j1939::{Reject, REJECT_KINDS};
 use fieldbus_core::telemetry::BUCKET_WIDTH_US;
 
+use fieldbus_core::telemetry::JitterStats;
+
 use crate::manifest::{Manifest, NegativeControl};
-use crate::runner::{Mode, RunOutcome};
+use crate::runner::{HogOutcome, Mode, RunOutcome, SchedulingReport, ThreadPolicy};
 
 /// How many explained misses are written to JSON before the list is capped.
 ///
@@ -257,6 +259,51 @@ pub struct WatchdogReport {
     pub timeout_us: u64,
 }
 
+/// What one thread asked the scheduler for and what it got.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadPolicyReport {
+    /// The manifest's name for the policy: `mach-time-constraint` or
+    /// `default-timeshare`.
+    pub policy: String,
+    /// The request as the operating system names it.
+    pub requested: String,
+    /// Whether it was granted. A `default-timeshare` thread requests nothing,
+    /// so this is false for it by construction and not a failure.
+    pub granted: bool,
+    /// Return code or reason, verbatim.
+    pub detail: String,
+    /// The QoS class the thread ended up in, read back from the kernel.
+    pub qos_class: String,
+}
+
+/// The `cpu-hog` control's contention, and what separates the contended part
+/// of the run from the rest of it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HogReport {
+    /// Spinners spawned.
+    pub threads: usize,
+    /// What they asked for and what they got.
+    pub policy: ThreadPolicyReport,
+    /// How many of them had it granted.
+    pub policy_granted: usize,
+    /// First contended cycle.
+    pub window_start_cycle: u64,
+    /// First cycle after the window.
+    pub window_end_cycle: u64,
+    /// Deadline misses at cycles inside the window.
+    pub misses_inside_window: u64,
+    /// Deadline misses at cycles outside it.
+    pub misses_outside_window: u64,
+    /// Wake jitter inside the window.
+    pub jitter_inside_window: JitterReport,
+    /// Wake jitter outside it, which is this run's own baseline: same thread,
+    /// same policy, no hog.
+    pub jitter_outside_window: JitterReport,
+    /// How the two halves compare, in words, so the number a reader quotes
+    /// carries its own caveat.
+    pub attribution: String,
+}
+
 /// One named gate condition and whether it held.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Check {
@@ -325,11 +372,97 @@ pub struct RunReport {
     pub can: CanReport,
     /// Watchdog outcome.
     pub watchdog: WatchdogReport,
+    /// What the control thread asked the scheduler for and what it got.
+    pub control_thread_policy: ThreadPolicyReport,
+    /// Present only for the `cpu-hog` control: the contention and its
+    /// attribution.
+    pub hog: Option<HogReport>,
     /// The positive gate, evaluated against this run whether or not it is a
     /// positive run. For a negative control, a failing gate is the point.
     pub gate: GateReport,
     /// Present only for a negative control.
     pub control: Option<ControlReport>,
+}
+
+/// Summarises one jitter histogram.
+pub fn jitter_report(j: &JitterStats) -> JitterReport {
+    JitterReport {
+        p50: j.p50_us(),
+        p95: j.p95_us(),
+        p99: j.p99_us(),
+        max: j.max_us(),
+        min: j.min_us(),
+        mean: j.mean_us(),
+        samples: j.count(),
+        histogram_bucket_width_us: BUCKET_WIDTH_US,
+        histogram_overflowed: j.overflowed(),
+        percentile_reporting: format!(
+            "nearest-rank, reported as the upper edge of the containing {BUCKET_WIDTH_US} us \
+             bucket. Buckets are half-open, so a reported value r means the true value lies in \
+             [r - {BUCKET_WIDTH_US}, r). An all-zero run reports every percentile as \
+             {BUCKET_WIDTH_US} while max reports 0. min and max are exact."
+        ),
+    }
+}
+
+/// Describes one thread's scheduling request and its outcome.
+pub fn thread_policy_report(policy: ThreadPolicy, s: &SchedulingReport) -> ThreadPolicyReport {
+    ThreadPolicyReport {
+        policy: policy.as_str().to_string(),
+        requested: s.requested.clone(),
+        granted: s.granted,
+        detail: s.detail.clone(),
+        qos_class: s.qos_class.clone(),
+    }
+}
+
+/// Summarises the contention and, more importantly, what separates the
+/// contended cycles from the rest of the same run.
+pub fn hog_report(h: &HogOutcome) -> HogReport {
+    let inside = jitter_report(&h.jitter_inside_window);
+    let outside = jitter_report(&h.jitter_outside_window);
+    let attribution = format!(
+        "Cycles {}..{} ran with {} spinners at the {} policy ({} of them granted it, QoS class \
+         {}). The rest of the run is the same thread at the same policy with no hog, so it is \
+         this run's own baseline. Missed deadlines: {} inside the window, {} outside it. Wake \
+         jitter p99: {} us inside, {} us outside; max {} us inside, {} us outside. Read the two \
+         together: a p99 that is already above the gate threshold outside the window is the \
+         control thread's own policy, not the contention, and only what separates inside from \
+         outside is the hog.",
+        h.start_cycle,
+        h.end_cycle,
+        h.threads,
+        h.policy.as_str(),
+        h.policy_granted,
+        h.qos_class,
+        h.misses_inside_window,
+        h.misses_outside_window,
+        inside.p99,
+        outside.p99,
+        inside.max,
+        outside.max
+    );
+    HogReport {
+        threads: h.threads,
+        policy: ThreadPolicyReport {
+            policy: h.policy.as_str().to_string(),
+            requested: h.policy_requested.clone(),
+            granted: h.policy_granted == h.threads && h.threads > 0,
+            detail: format!(
+                "{} of {} spinners were granted it",
+                h.policy_granted, h.threads
+            ),
+            qos_class: h.qos_class.clone(),
+        },
+        policy_granted: h.policy_granted,
+        window_start_cycle: h.start_cycle,
+        window_end_cycle: h.end_cycle,
+        misses_inside_window: h.misses_inside_window,
+        misses_outside_window: h.misses_outside_window,
+        jitter_inside_window: inside,
+        jitter_outside_window: outside,
+        attribution,
+    }
 }
 
 /// Builds a run report from an outcome and the frozen manifest.
@@ -378,23 +511,7 @@ pub fn build_run_report(
         target_period_us: period_us,
         cycles: outcome.executed_cycles,
         wall_us: outcome.wall_us,
-        jitter_us: JitterReport {
-            p50: j.p50_us(),
-            p95: j.p95_us(),
-            p99: j.p99_us(),
-            max: j.max_us(),
-            min: j.min_us(),
-            mean: j.mean_us(),
-            samples: j.count(),
-            histogram_bucket_width_us: BUCKET_WIDTH_US,
-            histogram_overflowed: j.overflowed(),
-            percentile_reporting: format!(
-                "nearest-rank, reported as the upper edge of the containing {BUCKET_WIDTH_US} us \
-                 bucket. Buckets are half-open, so a reported value r means the true value lies \
-                 in [r - {BUCKET_WIDTH_US}, r). An all-zero run reports every percentile as \
-                 {BUCKET_WIDTH_US} while max reports 0. min and max are exact."
-            ),
-        },
+        jitter_us: jitter_report(j),
         missed_deadlines: DeadlineReport {
             count: j.missed_deadlines(),
             explained_truncated: outcome.misses.len() > explained.len(),
@@ -428,6 +545,11 @@ pub fn build_run_report(
             actuator_zero_since_trip: outcome.actuator_zero_since_trip,
             timeout_us: manifest.watchdog.timeout_us,
         },
+        control_thread_policy: thread_policy_report(
+            outcome.control_thread_policy,
+            &outcome.scheduling,
+        ),
+        hog: outcome.hog.as_ref().map(hog_report),
         gate,
         control: None,
     }
@@ -472,16 +594,35 @@ pub fn evaluate_positive_gate(outcome: &RunOutcome, manifest: &Manifest) -> Gate
 
 /// Evaluates whether the `cpu-hog` control was caught.
 ///
-/// Caught means the positive gate failed. Nothing more is asserted, because
-/// nothing more is knowable: the control creates contention and either the
-/// gate notices or it does not. If it does not, that is reported as not
-/// caught. The gate is not adjusted to make it catch.
+/// Caught means the positive gate failed. That criterion is unchanged from v1
+/// and is deliberately the only one: the control creates contention and either
+/// the gate notices or it does not.
+///
+/// What is new is that "caught" is no longer the whole story, and the manifest
+/// says so before the run rather than after it. The control thread is demoted
+/// out of the time-constraint band for this run so the hog can be strictly
+/// above it, and that demotion alone costs about 2 ms of wake latency on this
+/// host. So the p99 condition can fail without the hog contributing anything.
+/// The diagnostics below carry the split the manifest pre-registered: misses
+/// inside the window against misses outside it, and the same for jitter. They
+/// do not change the verdict, because a diagnostic that can flip a verdict is
+/// a threshold, and thresholds are frozen.
 pub fn evaluate_cpu_hog(
     gate: &GateReport,
-    hog: Option<crate::runner::HogOutcome>,
+    hog: Option<&crate::runner::HogOutcome>,
 ) -> ControlReport {
     let caught = !gate.pass;
-    let (threads, granted) = hog.map(|h| (h.threads, h.policy_granted)).unwrap_or((0, 0));
+    let threads = hog.map(|h| h.threads).unwrap_or(0);
+    let granted = hog.map(|h| h.policy_granted).unwrap_or(0);
+    let inside = hog.map(|h| h.misses_inside_window).unwrap_or(0);
+    let outside = hog.map(|h| h.misses_outside_window).unwrap_or(0);
+    let p99_in = hog.map(|h| h.jitter_inside_window.p99_us()).unwrap_or(0);
+    let p99_out = hog.map(|h| h.jitter_outside_window.p99_us()).unwrap_or(0);
+    let policy = hog
+        .map(|h| h.policy.as_str().to_string())
+        .unwrap_or_else(|| "none".to_string());
+
+    let attributable = inside > 0 && inside > outside;
     ControlReport {
         id: "cpu-hog".to_string(),
         expected: "the positive gate is violated: missed_deadlines > 0 OR p99 jitter > 1000 us"
@@ -493,33 +634,60 @@ pub fn evaluate_cpu_hog(
                 observed: format!("gate pass = {}", gate.pass),
                 passed: caught,
             },
-            // A diagnostic, not part of the verdict, and so deliberately
-            // always passing. It is recorded so a NOT-caught result can be
-            // read correctly: contention from threads the scheduler refused
-            // to elevate is a different experiment from contention from
-            // peers at the same policy.
+            // Diagnostics from here down: recorded, never part of the verdict,
+            // and so deliberately always passing. A control whose threads were
+            // refused the policy they asked for, or whose misses landed outside
+            // its own window, is a different experiment from the frozen one,
+            // and a reader has to be able to see that from the result file.
             Check {
                 name: "hog_threads_with_policy_granted".to_string(),
-                expected: format!("diagnostic only, {threads} spawned"),
-                observed: format!("{granted} of {threads} granted the elevated policy"),
+                expected: format!("diagnostic only, {threads} spawned at policy {policy}"),
+                observed: format!("{granted} of {threads} granted"),
+                passed: true,
+            },
+            Check {
+                name: "misses_inside_versus_outside_the_hog_window".to_string(),
+                expected: "diagnostic only: misses attributable to the hog land inside its window"
+                    .to_string(),
+                observed: format!("{inside} inside, {outside} outside"),
+                passed: true,
+            },
+            Check {
+                name: "p99_jitter_inside_versus_outside_the_hog_window".to_string(),
+                expected: "diagnostic only: the out-of-window figure is this run's own baseline \
+                           for a control thread at the same policy with no hog"
+                    .to_string(),
+                observed: format!("{p99_in} us inside, {p99_out} us outside"),
                 passed: true,
             },
         ],
         caught,
-        note: if caught {
-            format!(
-                "Caught. {threads} spinning threads ({granted} with the elevated policy \
-                 granted) pushed the loop past the frozen deadline gate, which is what makes \
-                 the gate evidence rather than decoration."
-            )
-        } else {
-            format!(
-                "NOT caught. {threads} spinning threads ({granted} with the elevated policy \
-                 granted) did not push the loop past the frozen gate. The gate has deliberately \
-                 not been weakened to make this control fire, and the hog has not been made \
-                 more aggressive than the frozen mechanism specifies. The honest reading is \
-                 that this machine absorbed the contention."
-            )
+        note: match (caught, attributable) {
+            (true, true) => format!(
+                "Caught, and attributable. {threads} spinning threads at the {policy} policy \
+                 ({granted} granted it) produced {inside} missed deadlines inside the hog window \
+                 against {outside} outside it, with p99 wake jitter of {p99_in} us inside \
+                 against {p99_out} us outside. The out-of-window figures are the same thread at \
+                 the same policy with no hog, so what separates them is the contention."
+            ),
+            (true, false) => format!(
+                "Caught, but NOT attributable to the contention. {threads} spinning threads at \
+                 the {policy} policy ({granted} granted it) produced {inside} missed deadlines \
+                 inside the hog window against {outside} outside it, with p99 wake jitter of \
+                 {p99_in} us inside against {p99_out} us outside. The gate failed, but the \
+                 out-of-window baseline in this same run already fails it, which means what the \
+                 gate caught is the control thread's own scheduling policy and not the hog. The \
+                 manifest pre-registered this reading before the run; it is not a reinterpretation \
+                 after one."
+            ),
+            (false, _) => format!(
+                "NOT caught. {threads} spinning threads at the {policy} policy ({granted} \
+                 granted it) did not push the loop past the frozen gate: {inside} missed \
+                 deadlines inside the window, {outside} outside, p99 {p99_in} us inside against \
+                 {p99_out} us outside. The gate has deliberately not been weakened to make this \
+                 control fire and the hog has not been made more aggressive than the frozen \
+                 mechanism specifies."
+            ),
         },
     }
 }

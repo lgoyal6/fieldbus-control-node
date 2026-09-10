@@ -23,7 +23,7 @@ use fieldbus_host::report::{
     build_run_report, evaluate_can_corrupt, evaluate_cpu_hog, evaluate_sensor_freeze, limitations,
     CompletionReport, ManifestRef, RunReport, Summary,
 };
-use fieldbus_host::runner::{self, HogWindow, Mode, RunConfig};
+use fieldbus_host::runner::{self, HogWindow, Mode, RunConfig, ThreadPolicy};
 
 const USAGE: &str = "\
 fieldbus-node: periodic CAN control node with a simulated bus
@@ -180,17 +180,32 @@ fn cmd_run(args: &[String], control: Option<String>) -> Result<bool, String> {
     // description of it.
     let mut faults = FaultSchedule::clean();
     let mut hog_window = None;
+    // Every run but the cpu-hog control asks for the elevated policy, exactly
+    // as v1 did. The one exception is read from the manifest below, so the
+    // demotion cannot be introduced anywhere else by accident.
+    let mut control_thread_policy = ThreadPolicy::TimeConstraint;
 
     if let Some(id) = control.as_deref() {
         let spec = manifest.control(id)?;
         match id {
             "cpu-hog" => {
+                control_thread_policy = ThreadPolicy::from_manifest(
+                    spec.control_thread_policy
+                        .as_deref()
+                        .ok_or("manifest cpu-hog control has no control_thread_policy")?,
+                )?;
+                let hog_policy = ThreadPolicy::from_manifest(
+                    spec.hog_thread_policy
+                        .as_deref()
+                        .ok_or("manifest cpu-hog control has no hog_thread_policy")?,
+                )?;
                 hog_window = Some(HogWindow {
                     // The middle 40 percent, so the run has a clean head and
                     // a clean tail to compare the contended middle against.
                     start_cycle: cycles * 3 / 10,
                     end_cycle: cycles * 7 / 10,
                     threads: 2 * logical_cores(),
+                    policy: hog_policy,
                 });
             }
             "can-corrupt" => {
@@ -226,8 +241,13 @@ fn cmd_run(args: &[String], control: Option<String>) -> Result<bool, String> {
     );
     if let Some(w) = hog_window {
         eprintln!(
-            "  cpu-hog control: {} spinning threads on cycles {}..{}",
-            w.threads, w.start_cycle, w.end_cycle
+            "  cpu-hog control: {} spinning threads at the {} policy on cycles {}..{}, while \
+             this run's control thread uses the {} policy",
+            w.threads,
+            w.policy.as_str(),
+            w.start_cycle,
+            w.end_cycle,
+            control_thread_policy.as_str()
         );
     }
     if !faults.is_clean() {
@@ -242,6 +262,7 @@ fn cmd_run(args: &[String], control: Option<String>) -> Result<bool, String> {
     let cfg = RunConfig {
         cycles,
         period_us,
+        control_thread_policy,
         // The staleness budget the node is built with comes from the frozen
         // manifest, not from a constant in the core crate, so a run cannot
         // enforce a budget the experiment did not freeze.
@@ -264,7 +285,7 @@ fn cmd_run(args: &[String], control: Option<String>) -> Result<bool, String> {
     // code answers whichever one was asked.
     let verdict = match control.as_deref() {
         Some("cpu-hog") => {
-            let c = evaluate_cpu_hog(&report.gate, outcome.hog);
+            let c = evaluate_cpu_hog(&report.gate, outcome.hog.as_ref());
             let caught = c.caught;
             report.control = Some(c);
             caught
@@ -337,7 +358,29 @@ fn print_summary(r: &RunReport) {
             r.watchdog.overshoot_past_budget_us
         );
     }
-    println!("  scheduling policy: {}", r.environment.scheduling_policy);
+    println!(
+        "  control thread policy: {} -> requested {}, granted {}, qos {}",
+        r.control_thread_policy.policy,
+        r.control_thread_policy.requested,
+        r.control_thread_policy.granted,
+        r.control_thread_policy.qos_class
+    );
+    if let Some(h) = &r.hog {
+        println!(
+            "  hog threads: {} at policy {} -> {} granted, qos {}",
+            h.threads, h.policy.policy, h.policy_granted, h.policy.qos_class
+        );
+        println!(
+            "    misses inside window {} / outside {}; p99 jitter inside {} us / outside {} us; \
+             max inside {} us / outside {} us",
+            h.misses_inside_window,
+            h.misses_outside_window,
+            h.jitter_inside_window.p99,
+            h.jitter_outside_window.p99,
+            h.jitter_inside_window.max,
+            h.jitter_outside_window.max
+        );
+    }
     for c in &r.gate.checks {
         println!(
             "  gate {}: expected {} observed {} -> {}",
