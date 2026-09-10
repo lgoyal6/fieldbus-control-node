@@ -40,8 +40,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # The runner's Azure kernel ships without vcan: modprobe fails with
+      # "Module vcan not found in directory /lib/modules/<kernel>-azure"
+      # before any code is built. The module lives in the extra-modules
+      # package for that exact kernel, so it is installed here rather than
+      # having this job quietly not test anything.
       - name: bring up a virtual CAN interface
         run: |
+          sudo apt-get update
+          sudo apt-get install -y "linux-modules-extra-$(uname -r)"
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set up vcan0
