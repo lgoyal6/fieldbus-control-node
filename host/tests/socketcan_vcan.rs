@@ -19,6 +19,7 @@
 
 #![cfg(all(target_os = "linux", feature = "socketcan"))]
 
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use fieldbus_core::j1939::{crc8_j1850, sensor_frame, Reject, Validator, STATUS_OK};
@@ -27,9 +28,30 @@ use fieldbus_host::socketcan::SocketCanBus;
 
 const IFACE: &str = "vcan0";
 
+/// Serialises the tests in this file, because they share one interface.
+///
+/// `vcan0` is global state. Cargo runs the tests in this binary on separate
+/// threads by default, so without this the two of them transmit onto the same
+/// interface at the same time and each reads the other's frames. That is not
+/// hypothetical: the first CI run of this file failed with "expected three
+/// frames back from vcan0, got 4", and the extra frame was the other test's
+/// deliberately short one, while a second run of the identical commit passed.
+/// A flag on the cargo invocation would fix it only for whoever remembers the
+/// flag; the interface is shared no matter how the tests are started, so the
+/// lock belongs here.
+static IFACE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Takes the interface lock, ignoring poisoning: a panic in one test means
+/// that test failed, not that `vcan0` is unusable for the next one.
+fn claim_interface() -> MutexGuard<'static, ()> {
+    IFACE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[test]
 #[ignore = "needs a vcan0 interface; created by the CI workflow with root privileges"]
 fn validator_reaches_the_same_verdicts_over_real_af_can_sockets() {
+    let _iface = claim_interface();
+
     // Two sockets on the same interface: a CAN socket does not receive its
     // own transmissions by default, so the reader has to be a separate one.
     let mut rx = SocketCanBus::open(IFACE, Duration::from_millis(500))
@@ -110,6 +132,8 @@ fn validator_reaches_the_same_verdicts_over_real_af_can_sockets() {
 #[test]
 #[ignore = "needs a vcan0 interface; created by the CI workflow with root privileges"]
 fn a_short_frame_arrives_short_and_is_rejected_for_it() {
+    let _iface = claim_interface();
+
     // BadLength has to be reachable over a real socket, not just in the
     // simulator, or the validator's first check is untested where it matters.
     let mut rx = SocketCanBus::open(IFACE, Duration::from_millis(500)).expect("open vcan0 rx");
