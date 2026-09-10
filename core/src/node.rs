@@ -23,9 +23,18 @@ pub const KI: f32 = 4.00;
 pub const OUT_MIN: f32 = -1_000.0;
 /// Actuator command upper limit.
 pub const OUT_MAX: f32 = 1_000.0;
-/// Sensor staleness budget in microseconds. Frozen in
-/// `manifest/frozen.json`.
-pub const WATCHDOG_TIMEOUT_US: u64 = 100_000;
+/// Default sensor staleness budget in microseconds: eight 10 ms periods.
+/// Frozen in `manifest/frozen.json`, which the host reads and passes to
+/// [`ControlNode::with_watchdog_timeout`]; this constant is the default the
+/// drift guard pins to that file.
+///
+/// Eight periods rather than ten. The requirement being satisfied is that the
+/// node reaches its safe state within 100 ms of the last good reading, and a
+/// watchdog evaluated once per period cannot trip earlier than the first check
+/// strictly past its budget. A 100 ms budget therefore lands at about 110 ms,
+/// outside the requirement; 80 ms lands at about 90 ms, inside it with roughly
+/// one period of margin.
+pub const WATCHDOG_TIMEOUT_US: u64 = 80_000;
 /// The actuator value commanded while a safe state is latched.
 pub const SAFE_ACTUATOR: f32 = 0.0;
 
@@ -58,13 +67,24 @@ pub struct ControlNode {
 }
 
 impl ControlNode {
-    /// A node armed at `start_us` with the frozen gains and timeout.
+    /// A node armed at `start_us` with the frozen gains and the default
+    /// staleness budget.
     pub fn new(start_us: u64) -> Self {
+        Self::with_watchdog_timeout(start_us, WATCHDOG_TIMEOUT_US)
+    }
+
+    /// A node armed at `start_us` whose watchdog uses `timeout_us`.
+    ///
+    /// The host calls this with the value read from `manifest/frozen.json`,
+    /// so the staleness budget a run actually enforces is the one the frozen
+    /// experiment states rather than a constant that happens to agree with it
+    /// today.
+    pub fn with_watchdog_timeout(start_us: u64, timeout_us: u64) -> Self {
         ControlNode {
             validator: Validator::new(),
             filter: LowPass::new(FILTER_ALPHA),
             pi: Pi::new(KP, KI, OUT_MIN, OUT_MAX),
-            watchdog: Watchdog::new(WATCHDOG_TIMEOUT_US, start_us),
+            watchdog: Watchdog::new(timeout_us, start_us),
             tx_seq: 0,
             setpoint: SETPOINT,
         }

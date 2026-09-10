@@ -23,6 +23,8 @@ pub struct Manifest {
     /// Loop parameters: period, cycle count, seed.
     #[serde(rename = "loop")]
     pub loop_: LoopSpec,
+    /// The sensor-staleness budget the node is built with.
+    pub watchdog: WatchdogSpec,
     /// The four positive-gate thresholds.
     pub positive_gate: PositiveGate,
     /// The three negative controls, keyed by `id`.
@@ -38,6 +40,15 @@ pub struct LoopSpec {
     pub cycles: u64,
     /// Seed for the simulated plant's measurement noise.
     pub seed: u64,
+}
+
+/// The frozen watchdog parameters.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WatchdogSpec {
+    /// Sensor staleness budget in microseconds. The host builds the node's
+    /// watchdog with this, so the budget a run enforces is the frozen one and
+    /// not a constant that merely agrees with it.
+    pub timeout_us: u64,
 }
 
 /// The conditions a positive run must satisfy.
@@ -73,7 +84,8 @@ pub struct NegativeControl {
     /// Cycle at which the sensor stops. `sensor-freeze` only.
     #[serde(default)]
     pub freeze_at_cycle: Option<u64>,
-    /// Tightest tolerated watchdog reaction time. `sensor-freeze` only.
+    /// Longest tolerated path from the last accepted sensor frame to the
+    /// latched safe state, in microseconds. `sensor-freeze` only.
     #[serde(default)]
     pub max_reaction_time_us: Option<u64>,
 }

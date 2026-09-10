@@ -449,7 +449,10 @@ fn watchdog_is_armed_at_construction_so_a_sensor_that_never_starts_trips() {
             assert_eq!(timeout_us, WATCHDOG_TIMEOUT_US);
         }
     }
-    assert_eq!(s.reaction_time_us(), 1);
+    // Armed at 0 and never fed, so the path from "last accepted frame" is the
+    // whole budget plus the microsecond that pushed it past.
+    assert_eq!(s.time_since_last_accepted_us(), WATCHDOG_TIMEOUT_US + 1);
+    assert_eq!(s.overshoot_past_budget_us(), 1);
     assert_eq!(s.reason_name(), "sensor_stale");
 }
 
@@ -465,12 +468,49 @@ fn watchdog_does_not_trip_while_it_is_fed() {
 }
 
 #[test]
+fn eight_periods_reaches_the_safe_state_inside_the_hundred_millisecond_bound() {
+    // The arithmetic behind change B, stated as a test rather than as a
+    // comment. A watchdog evaluated once per period trips at the first check
+    // strictly past its budget, so the path from the last accepted frame to
+    // the safe state is the budget rounded up to the next whole period, plus
+    // one period if the budget is an exact multiple of it.
+    let period = fieldbus_core::control::PERIOD_US;
+    let reaction_for = |budget: u64| -> u64 {
+        let mut w = Watchdog::new(budget, 0);
+        w.feed(0);
+        let mut t = period;
+        loop {
+            if let Some(s) = w.check(t) {
+                return s.time_since_last_accepted_us();
+            }
+            t += period;
+        }
+    };
+
+    // The frozen budget: eight periods in, nine periods out, 10 ms of margin.
+    assert_eq!(WATCHDOG_TIMEOUT_US, 8 * period);
+    assert_eq!(reaction_for(WATCHDOG_TIMEOUT_US), 90_000);
+    assert!(reaction_for(WATCHDOG_TIMEOUT_US) <= 100_000);
+
+    // And why it is not ten periods: v1's budget reaches the safe state at
+    // 110 ms, which is outside the bound the requirement actually states. The
+    // v1 gate did not notice because it measured the overshoot past the budget
+    // instead of the path, and the overshoot is one period either way.
+    assert_eq!(reaction_for(100_000), 110_000);
+    assert!(reaction_for(100_000) > 100_000);
+}
+
+#[test]
 fn watchdog_latches_and_keeps_the_original_trip_timestamps() {
     let mut w = Watchdog::new(100_000, 0);
     w.feed(50_000);
     assert!(w.check(150_000).is_none(), "boundary is not yet stale");
     let first = w.check(151_000).expect("should trip");
-    assert_eq!(first.reaction_time_us(), 1_000);
+    // The reported reaction is the whole path from the last accepted frame:
+    // 151_000 - 50_000. How far the trip overshot the 100_000 us budget,
+    // 1_000 us, is the separate diagnostic.
+    assert_eq!(first.time_since_last_accepted_us(), 101_000);
+    assert_eq!(first.overshoot_past_budget_us(), 1_000);
 
     // Later checks, and even a sensor that comes back, must not change or
     // clear the latch.
@@ -689,21 +729,30 @@ fn node_latches_safe_and_commands_zero_when_the_sensor_freezes() {
     let freeze_at = 1_000u64;
     let out = scripted_run(1_100, Some(freeze_at));
 
-    // Last accepted frame was at cycle 999, timestamp 9_990_000 us. With a
-    // 100_000 us budget the deadline is 10_090_000 us, so the first check
-    // strictly past it is cycle 1010.
+    // Last accepted frame was at cycle 999, timestamp 9_990_000 us. With the
+    // frozen 80_000 us budget the deadline is 10_070_000 us, so the first
+    // check strictly past it is cycle 1008.
     let trip_index = out
         .iter()
         .position(|s| s.safe_state.is_some())
         .expect("watchdog never tripped");
-    assert_eq!(trip_index, 1_010, "tripped at the wrong period");
+    assert_eq!(trip_index, 1_008, "tripped at the wrong period");
 
     let state = out[trip_index].safe_state.unwrap();
+    // The requirement being enforced: the safe state is reached within
+    // 100_000 us of the last good reading. On an ideal clock that is
+    // 10_080_000 - 9_990_000 = 90_000 us, one period inside the bound. The
+    // margin is the whole point of an eight-period budget rather than a
+    // ten-period one; at ten periods this lands at 110_000 us and misses.
+    assert_eq!(state.time_since_last_accepted_us(), 90_000);
     assert!(
-        state.reaction_time_us() <= 10_000,
-        "reaction time {} exceeded one period",
-        state.reaction_time_us()
+        state.time_since_last_accepted_us() <= 100_000,
+        "safe state reached {} us after the last accepted frame",
+        state.time_since_last_accepted_us()
     );
+    // And the watchdog is still evaluated once per period: it cannot overshoot
+    // its own budget by more than one period on an ideal clock.
+    assert_eq!(state.overshoot_past_budget_us(), 10_000);
     assert_eq!(state.reason_name(), "sensor_stale");
 
     // Latched to the end, commanding the safe value, with the safe status.
@@ -785,7 +834,7 @@ fn rejected_frames_alone_do_not_hold_off_the_watchdog() {
         let mut bad = sensor_frame(i as u8, 500, STATUS_OK);
         bad.data[7] ^= 0xA5;
         let s = node.step(i * 10_000, &[bad]);
-        if i * 10_000 > 100_000 {
+        if i * 10_000 > WATCHDOG_TIMEOUT_US {
             assert!(
                 s.safe_state.is_some(),
                 "should be latched by {} us",
