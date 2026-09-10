@@ -5,7 +5,15 @@
 #
 # It runs the positive experiment twice, with the three negative controls in
 # between, and passes only if both positive runs satisfy every threshold in
-# manifest/frozen.json and all three controls were caught. Running the positive
+# manifest/frozen.json and all three controls were caught.
+#
+# manifest/frozen.json is experiment v2. v1 is preserved byte for byte as
+# manifest/frozen-v1.json, and the results it produced are under results/v1/,
+# including the gate failure that led to v2. v2 changes exactly two things:
+# the cpu-hog control now runs its spinners in a strictly higher scheduling
+# band than the control thread, and the watchdog budget is eight periods with
+# the reaction measured from the last accepted sensor frame. The positive gate
+# is byte-identical to v1's and a test asserts that. Running the positive
 # case twice, on either side of the controls, is what makes a passing result
 # mean something: a single clean run at the start proves nothing about the
 # state the machine was left in, and a run that only passes before the controls
@@ -38,6 +46,9 @@ fi
 
 BIN="./target/release/fieldbus-node"
 MANIFEST="manifest/frozen.json"
+# Printed, not used. A superseded manifest is evidence for the results it
+# produced and has no authority over this run.
+MANIFEST_V1="manifest/frozen-v1.json"
 
 # Per-run JSON goes to scratch; results/completion.json embeds every run in
 # full, so the individual files are working copies rather than evidence.
@@ -49,8 +60,10 @@ echo "fieldbus-control-node completion gate"
 echo "started:  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo "repo:     $REPO_ROOT"
 echo "commit:   $(git rev-parse HEAD 2>/dev/null || echo 'not a git tree')"
-echo "manifest: $MANIFEST"
+echo "manifest: $MANIFEST (experiment v2)"
 echo "sha256:   $(shasum -a 256 "$MANIFEST" | awk '{print $1}')"
+echo "supersed: $MANIFEST_V1"
+echo "sha256:   $(shasum -a 256 "$MANIFEST_V1" | awk '{print $1}')"
 echo "mode:     simulated bus and simulated sensor, single host"
 echo "          no CAN hardware, not hardware in the loop, no RTOS"
 echo "=============================================================="
@@ -80,6 +93,10 @@ echo "       positive-1 exit status: $POS1"
 
 echo
 echo "[6/10] negative control 1: cpu-hog"
+echo "       the spinners request a strictly higher scheduling band than this"
+echo "       run's control thread, which is demoted for this run only. The"
+echo "       demotion alone costs wake latency, so read the in-window and"
+echo "       out-of-window figures in the result, not just caught or not."
 CTRL1=0
 "$BIN" control cpu-hog --manifest "$MANIFEST" --run-id cpu-hog --out "$RUNS/cpu-hog.json" || CTRL1=$?
 echo "       cpu-hog exit status: $CTRL1 (0 means the control was caught)"

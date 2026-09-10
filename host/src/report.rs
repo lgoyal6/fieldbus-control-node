@@ -932,5 +932,18 @@ pub fn limitations() -> Vec<String> {
         "Jitter percentiles are reported as the upper edge of a 10 us histogram bucket. They are \
          bounds, not exact samples; min and max are exact."
             .to_string(),
+        "The cpu-hog control, and only that control, runs its control thread at the default \
+         timeshare policy so that the hog threads can be in a strictly higher scheduling band. \
+         On this host that demotion by itself costs about 2 ms of wake latency, which already \
+         exceeds the frozen 1000 us p99 threshold before any spinner starts. A p99 violation on \
+         that run is therefore not evidence of contention; the missed deadlines and the gap \
+         between the in-window and out-of-window figures are. Both positive runs request the \
+         time-constraint policy and are unaffected."
+            .to_string(),
+        "watchdog.reaction_time_us means something different here than it did in \
+         results/v1/. It is now the whole path from the last accepted sensor frame to the \
+         latched safe state, which is the quantity the 100 ms requirement bounds. What v1 \
+         reported under that name is kept as overshoot_past_budget_us."
+            .to_string(),
     ]
 }
