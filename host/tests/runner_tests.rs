@@ -22,6 +22,9 @@
 use fieldbus_host::runner::{Mode, PeriodLedger, RunConfig};
 
 const PERIOD: u64 = 10_000;
+/// The frozen staleness budget, eight periods. The runner takes it as a
+/// parameter because `manifest/frozen.json` is where it is set.
+const WATCHDOG_US: u64 = 80_000;
 
 #[test]
 fn an_on_time_loop_never_reports_a_skipped_period() {
@@ -104,6 +107,7 @@ fn virtual_time_runs_are_exactly_on_schedule_and_reproducible() {
     let cfg = RunConfig {
         cycles: 500,
         period_us: PERIOD,
+        watchdog_timeout_us: WATCHDOG_US,
         mode: Mode::Virtual,
     };
     let mut bus_a = SimBus::new(20260909, FaultSchedule::clean());
@@ -148,6 +152,7 @@ fn the_can_corrupt_schedule_produces_one_rejection_per_injected_frame() {
         RunConfig {
             cycles: 300,
             period_us: PERIOD,
+            watchdog_timeout_us: WATCHDOG_US,
             mode: Mode::Virtual,
         },
         None,
@@ -194,6 +199,7 @@ fn a_dropped_cycle_models_a_silent_sensor_and_produces_no_rejection() {
         RunConfig {
             cycles: 300,
             period_us: PERIOD,
+            watchdog_timeout_us: WATCHDOG_US,
             mode: Mode::Virtual,
         },
         None,
@@ -209,11 +215,11 @@ fn a_dropped_cycle_models_a_silent_sensor_and_produces_no_rejection() {
         .index()],
         0
     );
-    // Three lost periods is 30 ms, far inside the 100 ms staleness budget,
+    // Three lost periods is 30 ms, far inside the 80 ms staleness budget,
     // so the watchdog must not trip on them.
     assert!(
         out.safe_state.is_none(),
-        "three silent periods are not staleness at a 100 ms budget"
+        "three silent periods are not staleness at an 80 ms budget"
     );
 }
 
@@ -223,8 +229,8 @@ fn enough_consecutive_silent_periods_do_trip_the_watchdog() {
     use fieldbus_host::runner;
 
     // The complement of the test above: silence is tolerated up to the
-    // budget and not past it. Eleven consecutive silent periods is 110 ms
-    // against a 100 ms budget.
+    // budget and not past it. Nine consecutive silent periods is 90 ms
+    // against an 80 ms budget.
     let mut faults = FaultSchedule::clean();
     faults.dropped = (100..=115).collect();
 
@@ -234,6 +240,7 @@ fn enough_consecutive_silent_periods_do_trip_the_watchdog() {
         RunConfig {
             cycles: 300,
             period_us: PERIOD,
+            watchdog_timeout_us: WATCHDOG_US,
             mode: Mode::Virtual,
         },
         None,
@@ -242,7 +249,7 @@ fn enough_consecutive_silent_periods_do_trip_the_watchdog() {
     assert_eq!(out.rejected, 0);
     let state = out
         .safe_state
-        .expect("11 silent periods must trip a 100 ms watchdog");
+        .expect("16 silent periods must trip an 80 ms watchdog");
     assert_eq!(state.reason_name(), "sensor_stale");
     // And it latches: the sensor comes back at cycle 116 and the node stays
     // in its safe state regardless.

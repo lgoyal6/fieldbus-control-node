@@ -34,13 +34,32 @@ pub struct SafeState {
 }
 
 impl SafeState {
-    /// How late the trip was, in microseconds past the deadline it enforces.
+    /// How long the whole path took, in microseconds: from the last accepted
+    /// sensor frame to the moment the safe state latched.
     ///
-    /// The deadline is `last_seen_us + timeout_us`. This is the quantity that
-    /// says whether the watchdog is actually enforcing its budget or merely
-    /// reporting it: on a node checked once per 10 ms period, it should never
-    /// exceed one period.
-    pub const fn reaction_time_us(&self) -> u64 {
+    /// `tripped_at_us - last_seen_us`. This is the quantity the requirement
+    /// actually bounds. Measuring instead how far the trip overshot the
+    /// internal budget, as this did before, reports the last hop of the path
+    /// and hides the rest: a node with a 900 ms budget can overshoot it by 3 us
+    /// and still be 900 ms late to its safe state.
+    pub const fn time_since_last_accepted_us(&self) -> u64 {
+        match self.reason {
+            SafeReason::SensorStale {
+                last_seen_us,
+                tripped_at_us,
+                ..
+            } => tripped_at_us.saturating_sub(last_seen_us),
+        }
+    }
+
+    /// How far past its own internal budget the trip landed, in microseconds.
+    ///
+    /// `tripped_at_us - (last_seen_us + timeout_us)`. Kept as a diagnostic
+    /// because it is what says the watchdog is evaluated as often as it claims:
+    /// on a node checked once per period it cannot exceed one period plus the
+    /// difference between two wake-jitter samples. It is not the reported
+    /// reaction time.
+    pub const fn overshoot_past_budget_us(&self) -> u64 {
         match self.reason {
             SafeReason::SensorStale {
                 last_seen_us,

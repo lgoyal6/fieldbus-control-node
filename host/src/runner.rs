@@ -262,6 +262,9 @@ pub struct RunConfig {
     pub cycles: u64,
     /// Period length in microseconds.
     pub period_us: u64,
+    /// Sensor staleness budget in microseconds, read from the frozen manifest
+    /// and handed to the node rather than taken from a constant.
+    pub watchdog_timeout_us: u64,
     /// Real or virtual clock.
     pub mode: Mode,
 }
@@ -352,7 +355,7 @@ pub fn run(bus: &mut dyn CanBus, cfg: RunConfig, hog_window: Option<HogWindow>) 
         h.spawn(cfg.period_us);
         (w, h)
     });
-    let mut node = ControlNode::new(0);
+    let mut node = ControlNode::with_watchdog_timeout(0, cfg.watchdog_timeout_us);
     let mut jitter = JitterStats::new();
     let mut ledger = PeriodLedger::new(cfg.period_us);
     let mut misses: Vec<Miss> = Vec::new();

@@ -16,7 +16,6 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use fieldbus_core::node::WATCHDOG_TIMEOUT_US;
 use fieldbus_host::bus::{FaultSchedule, SimBus};
 use fieldbus_host::hog::logical_cores;
 use fieldbus_host::manifest::{Manifest, DEFAULT_PATH};
@@ -243,6 +242,10 @@ fn cmd_run(args: &[String], control: Option<String>) -> Result<bool, String> {
     let cfg = RunConfig {
         cycles,
         period_us,
+        // The staleness budget the node is built with comes from the frozen
+        // manifest, not from a constant in the core crate, so a run cannot
+        // enforce a budget the experiment did not freeze.
+        watchdog_timeout_us: manifest.watchdog.timeout_us,
         mode: o.mode,
     };
     let outcome = runner::run(&mut bus, cfg, hog_window);
@@ -254,7 +257,6 @@ fn cmd_run(args: &[String], control: Option<String>) -> Result<bool, String> {
         period_us,
         &manifest,
         manifest_ref,
-        WATCHDOG_TIMEOUT_US,
     );
 
     // A control's verdict is whether it was caught. A positive run's verdict
@@ -322,9 +324,19 @@ fn print_summary(r: &RunReport) {
         println!("    rejected {name} = {n}");
     }
     println!(
-        "  watchdog: tripped={} reason={:?} reaction_time_us={:?} trip_cycle={:?}",
-        r.watchdog.tripped, r.watchdog.reason, r.watchdog.reaction_time_us, r.watchdog.trip_cycle
+        "  watchdog: tripped={} reason={:?} timeout_us={} trip_cycle={:?}",
+        r.watchdog.tripped, r.watchdog.reason, r.watchdog.timeout_us, r.watchdog.trip_cycle
     );
+    if let Some(v) = r.watchdog.reaction_time_us {
+        println!(
+            "    safe state entered {v} us after the last accepted frame (bound {:?} us, margin \
+             {:?} us, overshoot past the {} us budget {:?} us)",
+            r.watchdog.reaction_bound_us,
+            r.watchdog.reaction_margin_us,
+            r.watchdog.timeout_us,
+            r.watchdog.overshoot_past_budget_us
+        );
+    }
     println!("  scheduling policy: {}", r.environment.scheduling_policy);
     for c in &r.gate.checks {
         println!(

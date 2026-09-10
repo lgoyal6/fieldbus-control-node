@@ -233,13 +233,27 @@ pub struct WatchdogReport {
     pub tripped: bool,
     /// The reason name, if it tripped.
     pub reason: Option<String>,
-    /// `tripped_at_us - (last_seen_us + timeout_us)`, if it tripped.
+    /// `tripped_at_us - last_seen_us`, if it tripped: the whole path from the
+    /// last accepted sensor frame to the latched safe state.
     pub reaction_time_us: Option<u64>,
+    /// What that number means, carried with it so it cannot be read as the v1
+    /// quantity of the same name.
+    pub reaction_time_definition: String,
+    /// The frozen bound on that path, from the `sensor-freeze` control.
+    pub reaction_bound_us: Option<u64>,
+    /// `reaction_bound_us - reaction_time_us`. Negative means the bound was
+    /// missed.
+    pub reaction_margin_us: Option<i64>,
+    /// `tripped_at_us - (last_seen_us + timeout_us)`: how far past its own
+    /// internal budget the trip landed. A diagnostic on how often the watchdog
+    /// is evaluated, not the reported reaction. This is the quantity v1 called
+    /// `reaction_time_us`.
+    pub overshoot_past_budget_us: Option<u64>,
     /// Cycle at which it latched.
     pub trip_cycle: Option<u64>,
     /// Whether the commanded actuator was 0 for every cycle after the trip.
     pub actuator_zero_since_trip: bool,
-    /// The staleness budget in force.
+    /// The staleness budget in force, read from the frozen manifest.
     pub timeout_us: u64,
 }
 
@@ -326,7 +340,6 @@ pub fn build_run_report(
     period_us: u64,
     manifest: &Manifest,
     manifest_ref: ManifestRef,
-    watchdog_timeout_us: u64,
 ) -> RunReport {
     let j = &outcome.jitter;
     let mut by_reason = std::collections::BTreeMap::new();
@@ -348,6 +361,15 @@ pub fn build_run_report(
         .collect();
 
     let gate = evaluate_positive_gate(outcome, manifest);
+
+    let reaction = outcome.safe_state.map(|s| s.time_since_last_accepted_us());
+    // The bound belongs to the sensor-freeze control, but it is reported on
+    // every run: a positive run that trips at all has already failed, and a
+    // reader should not have to open a different file to see by how much.
+    let bound = manifest
+        .control("sensor-freeze")
+        .ok()
+        .and_then(|c| c.max_reaction_time_us);
 
     RunReport {
         run_id: run_id.to_string(),
@@ -390,10 +412,21 @@ pub fn build_run_report(
         watchdog: WatchdogReport {
             tripped: outcome.safe_state.is_some(),
             reason: outcome.safe_state.map(|s| s.reason_name().to_string()),
-            reaction_time_us: outcome.safe_state.map(|s| s.reaction_time_us()),
+            reaction_time_us: reaction,
+            reaction_time_definition: "tripped_at_us - last_seen_us: the whole path from the \
+                                       timestamp of the last accepted sensor frame to the check \
+                                       that latched the safe state. Bounded by the sensor-freeze \
+                                       control's max_reaction_time_us in the frozen manifest."
+                .to_string(),
+            reaction_bound_us: bound,
+            reaction_margin_us: match (bound, reaction) {
+                (Some(b), Some(r)) => Some(b as i64 - r as i64),
+                _ => None,
+            },
+            overshoot_past_budget_us: outcome.safe_state.map(|s| s.overshoot_past_budget_us()),
             trip_cycle: outcome.trip_cycle,
             actuator_zero_since_trip: outcome.actuator_zero_since_trip,
-            timeout_us: watchdog_timeout_us,
+            timeout_us: manifest.watchdog.timeout_us,
         },
         gate,
         control: None,
@@ -576,7 +609,7 @@ pub fn evaluate_sensor_freeze(
         .safe_state
         .map(|s| s.reason_name().to_string())
         .unwrap_or_else(|| "none".to_string());
-    let reaction = outcome.safe_state.map(|s| s.reaction_time_us());
+    let reaction = outcome.safe_state.map(|s| s.time_since_last_accepted_us());
     let max_reaction = spec.max_reaction_time_us.unwrap_or(u64::MAX);
 
     let mut checks = vec![
@@ -594,9 +627,12 @@ pub fn evaluate_sensor_freeze(
         },
         Check {
             name: "reaction_time_us".to_string(),
-            expected: format!("<= {max_reaction}"),
+            expected: format!(
+                "<= {max_reaction} (from the timestamp of the last accepted sensor frame to the \
+                 latched safe state)"
+            ),
             observed: match reaction {
-                Some(v) => v.to_string(),
+                Some(v) => format!("{v}, margin {} us", max_reaction as i64 - v as i64),
                 None => "never tripped".to_string(),
             },
             passed: reaction.map(|v| v <= max_reaction).unwrap_or(false),
@@ -632,15 +668,23 @@ pub fn evaluate_sensor_freeze(
     let caught = checks.iter().all(|c| c.passed);
     ControlReport {
         id: "sensor-freeze".to_string(),
-        expected: "the watchdog trips within one period of the staleness deadline, the reason \
-                   persists to the end of the run, the actuator is commanded to 0 from the trip \
-                   onward, and the positive gate's watchdog condition therefore fails"
+        expected: "the safe state is entered within max_reaction_time_us of the last accepted \
+                   sensor frame, the reason persists to the end of the run, the actuator is \
+                   commanded to 0 from the trip onward, and the positive gate's watchdog \
+                   condition therefore fails"
             .to_string(),
         caught,
         note: if caught {
-            "Caught. The latch held to the end of the run and the actuator was commanded to the \
-             safe value throughout, so the safe state is a state and not a momentary log line."
-                .to_string()
+            match reaction {
+                Some(v) => format!(
+                    "Caught. The safe state was entered {v} us after the last accepted sensor \
+                     frame, {} us inside the {max_reaction} us bound, and the latch held to the \
+                     end of the run with the actuator commanded to the safe value throughout, so \
+                     the safe state is a state and not a momentary log line.",
+                    max_reaction as i64 - v as i64
+                ),
+                None => "Caught.".to_string(),
+            }
         } else {
             "NOT caught. See the failing checks.".to_string()
         },
