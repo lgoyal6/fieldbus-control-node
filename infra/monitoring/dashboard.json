@@ -1,0 +1,175 @@
+{
+  "title": "Fieldbus cloud reference",
+  "uid": "fieldbus-cloud",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Registered devices",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "fieldbus_devices_registered",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fieldbus-prometheus"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Stale devices",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "fieldbus_devices_stale",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fieldbus-prometheus"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Ingest accepted",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "rate(fieldbus_ingest_accepted_total[5m])",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fieldbus-prometheus"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Stored readings",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "fieldbus_readings_stored",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fieldbus-prometheus"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Request failures",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "rate(fieldbus_http_failures_total[5m])",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fieldbus-prometheus"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Event log size",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "fieldbus_log_bytes",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fieldbus-prometheus"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Average request handling duration",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "rate(fieldbus_http_duration_seconds_sum[5m]) / clamp_min(rate(fieldbus_http_duration_seconds_count[5m]), 0.001)",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fieldbus-prometheus"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Event log metadata available",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "fieldbus_store_up",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fieldbus-prometheus"
+      }
+    }
+  ]
+}

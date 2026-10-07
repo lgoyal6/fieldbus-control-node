@@ -1,0 +1,140 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: healthy cloud
+    interval: 1m
+    input_series:
+      - series: 'up{job="fieldbus-cloud"}'
+        values: '1x20'
+      - series: 'fieldbus_store_up'
+        values: '1x20'
+      - series: 'fieldbus_devices_stale'
+        values: '0x20'
+      - series: 'fieldbus_log_bytes'
+        values: '1000x20'
+      - series: 'fieldbus_http_requests_total'
+        values: '0+100x20'
+      - series: 'fieldbus_http_failures_total'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: FieldbusCloudUnavailable
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: FieldbusDevicesStale
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: FieldbusIngestFailures
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: FieldbusLogGrowth
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: FieldbusStorageUnavailable
+        exp_alerts: []
+  - name: missing cloud target
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: FieldbusCloudUnavailable
+        exp_alerts:
+          - exp_labels: {severity: page, job: fieldbus-cloud}
+            exp_annotations:
+              summary: "Cloud scrape failed; inspect process and event log"
+              runbook: "docs/runbook.md#server-restart"
+      - eval_time: 2m
+        alertname: FieldbusDevicesStale
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: FieldbusIngestFailures
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: FieldbusLogGrowth
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: FieldbusStorageUnavailable
+        exp_alerts: []
+  - name: failure thresholds
+    interval: 1m
+    input_series:
+      - series: 'up{job="fieldbus-cloud"}'
+        values: '0x20'
+      - series: 'fieldbus_store_up'
+        values: '0x20'
+      - series: 'fieldbus_devices_stale'
+        values: '1x20'
+      - series: 'fieldbus_log_bytes'
+        values: '2000000000x20'
+      - series: 'fieldbus_http_requests_total'
+        values: '0+100x20'
+      - series: 'fieldbus_http_failures_total'
+        values: '0+20x20'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: FieldbusCloudUnavailable
+        exp_alerts:
+          - exp_labels: {severity: page, job: fieldbus-cloud}
+            exp_annotations:
+              summary: "Cloud scrape failed; inspect process and event log"
+              runbook: "docs/runbook.md#server-restart"
+      - eval_time: 7m
+        alertname: FieldbusDevicesStale
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations:
+              summary: "A registered device has stopped sending readings"
+              runbook: "docs/runbook.md#device-is-stale"
+      - eval_time: 7m
+        alertname: FieldbusIngestFailures
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations:
+              summary: "More than 10 percent of requests are rejected"
+              runbook: "docs/runbook.md#ingest-rejects-requests"
+      - eval_time: 7m
+        alertname: FieldbusLogGrowth
+        exp_alerts:
+          - exp_labels: {severity: ticket}
+            exp_annotations:
+              summary: "Event log exceeds 1 GiB; archive before disk exhaustion"
+              runbook: "docs/runbook.md#storage-growth"
+      - eval_time: 7m
+        alertname: FieldbusStorageUnavailable
+        exp_alerts:
+          - exp_labels: {severity: page}
+            exp_annotations:
+              summary: "Cloud event log metadata is unavailable"
+              runbook: "docs/runbook.md#storage-growth"
+  - name: alerts clear after recovery
+    interval: 1m
+    input_series:
+      - series: 'up{job="fieldbus-cloud"}'
+        values: '0x7 1x13'
+      - series: 'fieldbus_store_up'
+        values: '0x7 1x13'
+      - series: 'fieldbus_devices_stale'
+        values: '1x7 0x13'
+      - series: 'fieldbus_log_bytes'
+        values: '2000000000x7 1000x13'
+      - series: 'fieldbus_http_requests_total'
+        values: '0+100x20'
+      - series: 'fieldbus_http_failures_total'
+        values: '0+20x7 140x13'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: FieldbusCloudUnavailable
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: FieldbusDevicesStale
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: FieldbusIngestFailures
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: FieldbusLogGrowth
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: FieldbusStorageUnavailable
+        exp_alerts: []
