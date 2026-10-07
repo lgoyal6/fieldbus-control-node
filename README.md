@@ -9,6 +9,29 @@ The control half is `#![no_std]`, allocation-free and `unsafe`-free, and
 cross-compiles to `thumbv7em-none-eabihf`. The host half owns every clock,
 thread, socket and allocation.
 
+## Device-to-cloud slice
+
+The workspace also contains `fieldbus-cloud`, a transport-independent reference
+service for the edge path. It defines a versioned HMAC-signed reading envelope,
+device registration and credential rotation, an append-only durable event log,
+deduplicating ingest, stale-device health, dashboard projection, and firmware
+and configuration metadata. `DeviceSimulator` models a bounded 256-reading
+offline ring and removes readings only after an accepted batch, so retry and
+restart behavior are testable without hardware.
+
+```sh
+./scripts/cloud_smoke.sh
+cargo run -p fieldbus-cloud -- simulate /tmp/fieldbus-events.log
+cargo run -p fieldbus-cloud -- serve 127.0.0.1:8080 /tmp/fieldbus-events.log
+```
+
+The cloud service is a local reference adapter, not a production deployment:
+put TLS and an authenticated reverse proxy in front of it, protect the event
+log, and export ingest, stale-device, retry-age, and ring-overflow metrics.
+See [`docs/architecture.md`](docs/architecture.md),
+[`docs/decisions/0001-device-cloud-boundaries.md`](docs/decisions/0001-device-cloud-boundaries.md),
+and [`docs/runbook.md`](docs/runbook.md).
+
 ## What this is not
 
 Stated first, because everything below is only meaningful with it in view.
