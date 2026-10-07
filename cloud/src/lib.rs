@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
@@ -104,7 +104,7 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 fn unhex(s: &str) -> Result<Vec<u8>, Error> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(Error::Invalid("secret must be even-length hex".into()));
     }
     (0..s.len())
@@ -166,18 +166,25 @@ impl Store {
             firmware: BTreeMap::new(),
             config: BTreeMap::new(),
         };
-        if path.exists() {
-            for line in
-                BufReader::new(File::open(&path).map_err(|e| Error::Io(e.to_string()))?).lines()
-            {
-                let line = line.map_err(|e| Error::Io(e.to_string()))?;
-                if line.trim().is_empty() {
-                    continue;
-                }
-                let e: Event =
-                    serde_json::from_str(&line).map_err(|e| Error::Invalid(e.to_string()))?;
-                s.apply(e)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| Error::Io(e.to_string()))?;
+        }
+        // Create an empty writable log at startup. A fresh deployment should not
+        // page as unavailable just because it has not received its first event.
+        let log = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| Error::Io(e.to_string()))?;
+        for line in BufReader::new(log).lines() {
+            let line = line.map_err(|e| Error::Io(e.to_string()))?;
+            if line.trim().is_empty() {
+                continue;
             }
+            let event: Event =
+                serde_json::from_str(&line).map_err(|e| Error::Invalid(e.to_string()))?;
+            s.apply(event)?;
         }
         Ok(s)
     }
@@ -349,6 +356,14 @@ impl Store {
             .get(id)
             .map(|m| m.values().cloned().collect())
             .unwrap_or_default()
+    }
+    pub fn reading_count(&self) -> usize {
+        self.readings.values().map(|r| r.len()).sum()
+    }
+    pub fn log_bytes(&self) -> Result<u64, Error> {
+        fs::metadata(&self.path)
+            .map(|m| m.len())
+            .map_err(|e| Error::Io(e.to_string()))
     }
     pub fn device(&self, id: &str) -> Option<DeviceRecord> {
         self.devices.get(id).cloned()
@@ -528,5 +543,13 @@ mod tests {
         assert!(s.ingest(&[good, bad], 2).is_err());
         assert!(s.readings("d").is_empty());
         let _ = fs::remove_file(p);
+    }
+    #[test]
+    fn empty_store_has_a_readable_log_and_missing_storage_is_explicit() {
+        let p = tmp();
+        let store = Store::open(&p).unwrap();
+        assert_eq!(store.log_bytes().unwrap(), 0);
+        fs::remove_file(&p).unwrap();
+        assert!(store.log_bytes().is_err());
     }
 }
