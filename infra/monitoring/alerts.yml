@@ -1,0 +1,28 @@
+groups:
+  - name: fieldbus.cloud
+    rules:
+      - alert: FieldbusCloudUnavailable
+        expr: up{job="fieldbus-cloud"} == 0 or absent(up{job="fieldbus-cloud"})
+        for: 1m
+        labels: { severity: page }
+        annotations: { summary: "Cloud scrape failed; inspect process and event log", runbook: "docs/runbook.md#server-restart" }
+      - alert: FieldbusDevicesStale
+        expr: fieldbus_devices_stale > 0
+        for: 2m
+        labels: { severity: ticket }
+        annotations: { summary: "A registered device has stopped sending readings", runbook: "docs/runbook.md#device-is-stale" }
+      - alert: FieldbusIngestFailures
+        expr: rate(fieldbus_http_failures_total[5m]) / clamp_min(rate(fieldbus_http_requests_total[5m]), 0.001) > 0.1
+        for: 5m
+        labels: { severity: ticket }
+        annotations: { summary: "More than 10 percent of requests are rejected", runbook: "docs/runbook.md#ingest-rejects-requests" }
+      - alert: FieldbusLogGrowth
+        expr: fieldbus_log_bytes > 1073741824
+        for: 5m
+        labels: { severity: ticket }
+        annotations: { summary: "Event log exceeds 1 GiB; archive before disk exhaustion", runbook: "docs/runbook.md#storage-growth" }
+      - alert: FieldbusStorageUnavailable
+        expr: fieldbus_store_up == 0
+        for: 1m
+        labels: { severity: page }
+        annotations: { summary: "Cloud event log metadata is unavailable", runbook: "docs/runbook.md#storage-growth" }

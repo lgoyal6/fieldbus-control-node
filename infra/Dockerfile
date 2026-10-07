@@ -1,7 +1,7 @@
 FROM rust:1.90-bookworm AS build
 WORKDIR /src
 COPY . .
-RUN cargo build --release -p fieldbus-cloud
+RUN cargo build --locked --release -p fieldbus-cloud -j 2
 
 FROM debian:bookworm-slim
 COPY --from=build /src/target/release/fieldbus-cloud /usr/local/bin/fieldbus-cloud
