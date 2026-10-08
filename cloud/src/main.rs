@@ -1,4 +1,5 @@
 use fieldbus_cloud::{ConfigMetadata, DeviceSimulator, Error, FirmwareMetadata, Store, MAX_BATCH};
+use sha2::{Digest, Sha256};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -9,6 +10,27 @@ fn response(mut s: TcpStream, status: &str, body: String, content_type: &str) {
 }
 fn json<T: serde::Serialize>(v: T) -> String {
     serde_json::to_string(&v).unwrap_or_else(|_| "{\"error\":\"serialization\"}".into())
+}
+fn header<'a>(head: &'a str, wanted: &str) -> Option<&'a str> {
+    head.lines().skip(1).find_map(|line| {
+        line.split_once(':')
+            .and_then(|(n, v)| n.eq_ignore_ascii_case(wanted).then_some(v.trim()))
+    })
+}
+fn admin_authorized(head: &str) -> bool {
+    let Some(expected) = std::env::var("FIELDBUS_ADMIN_TOKEN_SHA256")
+        .ok()
+        .filter(|v| !v.is_empty())
+    else {
+        return true;
+    };
+    let Some(value) = header(head, "authorization") else {
+        return false;
+    };
+    let Some(token) = value.strip_prefix("Bearer ") else {
+        return false;
+    };
+    format!("{:x}", Sha256::digest(token.as_bytes())) == expected
 }
 #[derive(Default)]
 struct Metrics {
@@ -102,6 +124,24 @@ fn handle(mut stream: TcpStream, mut store: Store, metrics: &mut Metrics) -> Sto
     let mut line = head.lines().next().unwrap_or("").split_whitespace();
     let method = line.next().unwrap_or("");
     let path = line.next().unwrap_or("");
+    if matches!(
+        (method, path),
+        ("POST", "/register")
+            | ("POST", "/rotate-credential")
+            | ("POST", "/firmware")
+            | ("POST", "/config")
+    ) && !admin_authorized(&head)
+    {
+        metrics.failures += 1;
+        metrics.observe(started);
+        response(
+            stream,
+            "401 Unauthorized",
+            "{\"error\":\"admin authentication required\"}".into(),
+            "application/json",
+        );
+        return store;
+    }
     if method == "GET" && path == "/metrics" {
         let health = store.dashboard(now(), 120_000);
         let stale = health.iter().filter(|h| h.stale).count();
