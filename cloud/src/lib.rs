@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 pub const PROTOCOL_VERSION: u8 = 1;
 pub const MAX_BATCH: usize = 64;
 pub const MAX_RING: usize = 256;
+pub const MAX_STORED_READINGS: usize = 100_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Reading {
@@ -106,6 +107,9 @@ fn hex(bytes: &[u8]) -> String {
 fn unhex(s: &str) -> Result<Vec<u8>, Error> {
     if !s.len().is_multiple_of(2) {
         return Err(Error::Invalid("secret must be even-length hex".into()));
+    }
+    if !s.is_ascii() {
+        return Err(Error::Invalid("secret must contain ASCII hex".into()));
     }
     (0..s.len())
         .step_by(2)
@@ -300,6 +304,9 @@ impl Store {
             {
                 unseen.push(e.clone());
             }
+        }
+        if self.reading_count().saturating_add(unseen.len()) > MAX_STORED_READINGS {
+            return Err(Error::Conflict);
         }
         let mut accepted = 0;
         for e in unseen {

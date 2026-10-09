@@ -11,27 +11,55 @@ fn response(mut s: TcpStream, status: &str, body: String, content_type: &str) {
 fn json<T: serde::Serialize>(v: T) -> String {
     serde_json::to_string(&v).unwrap_or_else(|_| "{\"error\":\"serialization\"}".into())
 }
-fn header<'a>(head: &'a str, wanted: &str) -> Option<&'a str> {
-    head.lines().skip(1).find_map(|line| {
-        line.split_once(':')
-            .and_then(|(n, v)| n.eq_ignore_ascii_case(wanted).then_some(v.trim()))
+fn constant_time_hex_equal(actual: &[u8], expected: &str) -> bool {
+    if expected.len() != 64 || !expected.is_ascii() {
+        return false;
+    }
+    let actual_hex: String = actual.iter().map(|byte| format!("{byte:02x}")).collect();
+    let mut difference = 0u8;
+    for (left, right) in actual_hex.as_bytes().iter().zip(expected.as_bytes()) {
+        difference |= *left ^ *right;
+    }
+    actual_hex.len() == expected.len() && difference == 0
+}
+
+fn admin_authorized(head: &str) -> bool {
+    let expected = match std::env::var("FIELDBUS_ADMIN_TOKEN_SHA256") {
+        Ok(value) if !value.is_empty() => value,
+        _ => return std::env::var("FIELDBUS_ALLOW_INSECURE_ADMIN").as_deref() == Ok("1"),
+    };
+    let values: Vec<&str> = head
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            line.split_once(':').and_then(|(name, value)| {
+                name.eq_ignore_ascii_case("authorization")
+                    .then_some(value.trim())
+            })
+        })
+        .collect();
+    if values.len() != 1 {
+        return false;
+    }
+    let Some(token) = values[0].strip_prefix("Bearer ") else {
+        return false;
+    };
+    let digest = Sha256::digest(token.as_bytes());
+    constant_time_hex_equal(&digest, &expected)
+}
+
+fn public_device(d: fieldbus_cloud::DeviceRecord) -> serde_json::Value {
+    serde_json::json!({
+        "device_id": d.device_id,
+        "credential_version": d.credential_version,
+        "firmware_version": d.firmware_version,
+        "config_version": d.config_version,
+        "last_seen_ms": d.last_seen_ms,
+        "last_sequence": d.last_sequence,
+        "boot_counter": d.boot_counter,
     })
 }
-fn admin_authorized(head: &str) -> bool {
-    let Some(expected) = std::env::var("FIELDBUS_ADMIN_TOKEN_SHA256")
-        .ok()
-        .filter(|v| !v.is_empty())
-    else {
-        return true;
-    };
-    let Some(value) = header(head, "authorization") else {
-        return false;
-    };
-    let Some(token) = value.strip_prefix("Bearer ") else {
-        return false;
-    };
-    format!("{:x}", Sha256::digest(token.as_bytes())) == expected
-}
+
 #[derive(Default)]
 struct Metrics {
     requests: u64,
@@ -172,7 +200,7 @@ fn handle(mut stream: TcpStream, mut store: Store, metrics: &mut Metrics) -> Sto
                     v["firmware_version"].as_str().unwrap_or(""),
                 )
             })
-            .map(|d| ("201 Created".into(), json(d))),
+            .map(|d| ("201 Created".into(), json(public_device(d)))),
         ("POST", "/rotate-credential") => serde_json::from_str::<serde_json::Value>(&body)
             .map_err(|e| Error::Invalid(e.to_string()))
             .and_then(|v| {
@@ -181,7 +209,7 @@ fn handle(mut stream: TcpStream, mut store: Store, metrics: &mut Metrics) -> Sto
                     v["secret_hex"].as_str().unwrap_or(""),
                 )
             })
-            .map(|d| ("200 OK".into(), json(d))),
+            .map(|d| ("200 OK".into(), json(public_device(d)))),
         ("POST", "/ingest") => serde_json::from_str::<Vec<fieldbus_cloud::Envelope>>(&body)
             .map_err(|e| Error::Invalid(e.to_string()))
             .and_then(|b| {
