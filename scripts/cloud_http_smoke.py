@@ -1,6 +1,8 @@
 """HTTP framing and restart telemetry gate, without physical device claims."""
 from pathlib import Path
 import socket
+import hashlib
+import json
 import subprocess
 import tempfile
 import time
@@ -17,7 +19,7 @@ with tempfile.TemporaryDirectory() as tmp:
         port = sock.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
     def start():
-        child = subprocess.Popen([str(ROOT / "target/debug/fieldbus-cloud"), "serve", f"127.0.0.1:{port}", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        child = subprocess.Popen([str(ROOT / "target/debug/fieldbus-cloud"), "serve", f"127.0.0.1:{port}", str(path)], env={**__import__("os").environ, "FIELDBUS_ADMIN_TOKEN_SHA256": hashlib.sha256(b"admin-token").hexdigest()}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             try:
                 with urlopen(base + "/healthz", timeout=1) as response:
@@ -36,6 +38,17 @@ with tempfile.TemporaryDirectory() as tmp:
     try:
         assert metric("fieldbus_readings_stored") == 10
         assert metric("fieldbus_devices_registered") == 1
+        # Administrative endpoints fail closed and never echo the credential.
+        register = Request(base + "/register", data=json.dumps({"device_id":"http-1","secret_hex":"0011","firmware_version":"1"}).encode(), headers={"Content-Type":"application/json"})
+        try:
+            urlopen(register, timeout=2)
+            raise AssertionError("admin route accepted an unauthenticated request")
+        except HTTPError as error:
+            assert error.code == 401
+        register = Request(base + "/register", data=json.dumps({"device_id":"http-1","secret_hex":"0011","firmware_version":"1"}).encode(), headers={"Content-Type":"application/json", "Authorization":"Bearer admin-token"})
+        with urlopen(register, timeout=2) as response:
+            body = response.read().decode()
+            assert response.status == 201 and "secret_hex" not in body
         assert metric("fieldbus_store_up") == 1
         assert metric("fieldbus_http_duration_seconds_count") >= 1
         # A standard client keeps its write side open while reading the reply.
@@ -46,7 +59,7 @@ with tempfile.TemporaryDirectory() as tmp:
             raise AssertionError("invalid batch accepted")
         except HTTPError as error:
             assert error.code == 400
-        assert metric("fieldbus_http_failures_total") == 1
+        assert metric("fieldbus_http_failures_total") == 2
     finally:
         child.terminate(); child.wait(timeout=5)
     child = start()
