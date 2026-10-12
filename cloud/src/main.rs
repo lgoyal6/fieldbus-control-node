@@ -65,6 +65,11 @@ struct Metrics {
     requests: u64,
     failures: u64,
     accepted: u64,
+    rejected_invalid: u64,
+    rejected_unauthorized: u64,
+    rejected_conflict: u64,
+    rejected_not_found: u64,
+    rejected_io: u64,
     duration_seconds: f64,
     duration_count: u64,
 }
@@ -73,6 +78,16 @@ impl Metrics {
     fn observe(&mut self, started: Instant) {
         self.duration_seconds += started.elapsed().as_secs_f64();
         self.duration_count += 1;
+    }
+
+    fn reject(&mut self, error: &Error) {
+        match error {
+            Error::Invalid(_) => self.rejected_invalid += 1,
+            Error::Unauthorized => self.rejected_unauthorized += 1,
+            Error::Conflict => self.rejected_conflict += 1,
+            Error::NotFound => self.rejected_not_found += 1,
+            Error::Io(_) => self.rejected_io += 1,
+        }
     }
 }
 
@@ -139,6 +154,7 @@ fn handle(mut stream: TcpStream, mut store: Store, metrics: &mut Metrics) -> Sto
         Ok(request) => request,
         Err(_) => {
             metrics.failures += 1;
+            metrics.rejected_invalid += 1;
             metrics.observe(started);
             response(
                 stream,
@@ -161,6 +177,7 @@ fn handle(mut stream: TcpStream, mut store: Store, metrics: &mut Metrics) -> Sto
     ) && !admin_authorized(&head)
     {
         metrics.failures += 1;
+        metrics.rejected_unauthorized += 1;
         metrics.observe(started);
         response(
             stream,
@@ -181,7 +198,7 @@ fn handle(mut stream: TcpStream, mut store: Store, metrics: &mut Metrics) -> Sto
             .unwrap_or_else(|_| "NaN".into());
         metrics.observe(started);
         let total = store.reading_count();
-        let body = format!("# TYPE fieldbus_http_requests_total counter\nfieldbus_http_requests_total {}\n# TYPE fieldbus_http_failures_total counter\nfieldbus_http_failures_total {}\n# TYPE fieldbus_readings_stored gauge\nfieldbus_readings_stored {total}\n# TYPE fieldbus_devices_stale gauge\nfieldbus_devices_stale {stale}\n# TYPE fieldbus_devices_registered gauge\nfieldbus_devices_registered {}\n# TYPE fieldbus_log_bytes gauge\nfieldbus_log_bytes {bytes}\n# TYPE fieldbus_store_up gauge\nfieldbus_store_up {store_up}\n# TYPE fieldbus_ingest_accepted_total counter\nfieldbus_ingest_accepted_total {}\n# TYPE fieldbus_http_duration_seconds summary\nfieldbus_http_duration_seconds_sum {}\nfieldbus_http_duration_seconds_count {}\n", metrics.requests, metrics.failures, health.len(), metrics.accepted, metrics.duration_seconds, metrics.duration_count);
+        let body = format!("# TYPE fieldbus_http_requests_total counter\nfieldbus_http_requests_total {}\n# TYPE fieldbus_http_failures_total counter\nfieldbus_http_failures_total {}\n# TYPE fieldbus_http_rejected_total counter\nfieldbus_http_rejected_total{{reason=\"invalid\"}} {}\nfieldbus_http_rejected_total{{reason=\"unauthorized\"}} {}\nfieldbus_http_rejected_total{{reason=\"conflict\"}} {}\nfieldbus_http_rejected_total{{reason=\"not_found\"}} {}\nfieldbus_http_rejected_total{{reason=\"io\"}} {}\n# TYPE fieldbus_readings_stored gauge\nfieldbus_readings_stored {total}\n# TYPE fieldbus_devices_stale gauge\nfieldbus_devices_stale {stale}\n# TYPE fieldbus_devices_registered gauge\nfieldbus_devices_registered {}\n# TYPE fieldbus_log_bytes gauge\nfieldbus_log_bytes {bytes}\n# TYPE fieldbus_store_up gauge\nfieldbus_store_up {store_up}\n# TYPE fieldbus_ingest_accepted_total counter\nfieldbus_ingest_accepted_total {}\n# TYPE fieldbus_http_duration_seconds summary\nfieldbus_http_duration_seconds_sum {}\nfieldbus_http_duration_seconds_count {}\n", metrics.requests, metrics.failures, metrics.rejected_invalid, metrics.rejected_unauthorized, metrics.rejected_conflict, metrics.rejected_not_found, metrics.rejected_io, health.len(), metrics.accepted, metrics.duration_seconds, metrics.duration_count);
         response(stream, "200 OK", body, "text/plain; version=0.0.4");
         return store;
     }
@@ -241,6 +258,9 @@ fn handle(mut stream: TcpStream, mut store: Store, metrics: &mut Metrics) -> Sto
     };
     if result.is_err() {
         metrics.failures += 1;
+        if let Err(ref error) = result {
+            metrics.reject(error);
+        }
     }
     eprintln!(
         "{}",
