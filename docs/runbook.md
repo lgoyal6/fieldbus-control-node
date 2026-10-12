@@ -21,7 +21,9 @@ Credential rotation is a server-side record transition. A production transport s
 
 `GET /metrics` exports Prometheus text. `fieldbus_readings_stored`, device counts, and
 `fieldbus_log_bytes` are derived from the replayed durable store; request and failure counters
-reset when the process restarts. No device IDs, secrets, or readings appear in metric labels.
+reset when the process restarts. `fieldbus_http_rejected_total{reason=...}` breaks failures
+into bounded `invalid`, `unauthorized`, `conflict`, `not_found`, and `io` causes. No device IDs,
+secrets, or readings appear in metric labels.
 Structured request logs contain method, outcome, and duration, with no request body.
 
 Use `infra/monitoring/prometheus.yml`, `alerts.yml`, and `dashboard.json` with your monitoring

@@ -34,6 +34,11 @@ with tempfile.TemporaryDirectory() as tmp:
         with urlopen(base + "/metrics", timeout=2) as response:
             text = response.read().decode()
         return float(next(line.split()[1] for line in text.splitlines() if line.startswith(name + " ")))
+    def labeled_metric(name, reason):
+        with urlopen(base + "/metrics", timeout=2) as response:
+            text = response.read().decode()
+        prefix = f'{name}{{reason="{reason}"}} '
+        return float(next(line.split()[1] for line in text.splitlines() if line.startswith(prefix)))
     child = start()
     try:
         assert metric("fieldbus_readings_stored") == 10
@@ -45,6 +50,7 @@ with tempfile.TemporaryDirectory() as tmp:
             raise AssertionError("admin route accepted an unauthenticated request")
         except HTTPError as error:
             assert error.code == 401
+        assert labeled_metric("fieldbus_http_rejected_total", "unauthorized") == 1
         register = Request(base + "/register", data=json.dumps({"device_id":"http-1","secret_hex":"0011","firmware_version":"1"}).encode(), headers={"Content-Type":"application/json", "Authorization":"Bearer admin-token"})
         with urlopen(register, timeout=2) as response:
             body = response.read().decode()
@@ -60,6 +66,7 @@ with tempfile.TemporaryDirectory() as tmp:
         except HTTPError as error:
             assert error.code == 400
         assert metric("fieldbus_http_failures_total") == 2
+        assert labeled_metric("fieldbus_http_rejected_total", "invalid") == 1
     finally:
         child.terminate(); child.wait(timeout=5)
     child = start()
