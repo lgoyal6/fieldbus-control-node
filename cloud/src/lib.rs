@@ -1,5 +1,6 @@
 //! Device-to-cloud protocol, durable store, and deterministic device simulator.
-//! The domain is transport independent; the binary supplies a small HTTP adapter.
+//! cloud/src/main.rs supplies HTTP; DeviceSimulator exercises the same ingest contract.
+//! Successful ingest confirms the whole batch, while its count reports only new rows.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -155,7 +156,7 @@ pub fn signed(secret_hex: &str, reading: Reading) -> Result<Envelope, Error> {
 pub struct Store {
     path: PathBuf,
     devices: BTreeMap<String, DeviceRecord>,
-    readings: BTreeMap<String, BTreeMap<u64, Envelope>>,
+    readings: BTreeMap<String, BTreeMap<(u64, u64), Envelope>>,
     firmware: BTreeMap<String, FirmwareMetadata>,
     config: BTreeMap<u64, ConfigMetadata>,
 }
@@ -223,7 +224,7 @@ impl Store {
                 self.readings
                     .entry(device_id.clone())
                     .or_default()
-                    .insert(e.reading.sequence, e);
+                    .insert((boot_counter, sequence), e);
                 if let Some(d) = self.devices.get_mut(&device_id) {
                     d.last_seen_ms = Some(received_ms);
                     d.last_sequence = Some(sequence);
@@ -292,16 +293,21 @@ impl Store {
             if !e.reading.value.is_finite() || e.reading.quality.is_empty() {
                 return Err(Error::Invalid("invalid reading".into()));
             }
-            let seen = self
+            let key = (e.reading.boot_counter, e.reading.sequence);
+            let stored = self
                 .readings
                 .get(&e.reading.device_id)
-                .is_some_and(|r| r.contains_key(&e.reading.sequence));
-            if !seen
-                && !unseen.iter().any(|prior: &Envelope| {
-                    prior.reading.device_id == e.reading.device_id
-                        && prior.reading.sequence == e.reading.sequence
-                })
-            {
+                .and_then(|r| r.get(&key));
+            let pending = unseen.iter().find(|prior: &&Envelope| {
+                prior.reading.device_id == e.reading.device_id
+                    && (prior.reading.boot_counter, prior.reading.sequence) == key
+            });
+            // A retry may repeat an identity, but cannot replace its reading.
+            if let Some(prior) = stored.or(pending) {
+                if prior.reading != e.reading {
+                    return Err(Error::Conflict);
+                }
+            } else {
                 unseen.push(e.clone());
             }
         }
@@ -310,31 +316,24 @@ impl Store {
         }
         let mut accepted = 0;
         for e in unseen {
-            let device_id = e.reading.device_id.clone();
-            let sequence = e.reading.sequence;
-            let boot_counter = e.reading.boot_counter;
+            // append applies health metadata after the durable event write.
             self.append(Event::ReadingAccepted {
                 envelope: e,
                 received_ms,
             })?;
-            let d = self.devices.get_mut(&device_id).expect("device exists");
-            d.last_seen_ms = Some(received_ms);
-            d.last_sequence = Some(sequence);
-            d.boot_counter = Some(boot_counter);
             accepted += 1;
         }
         Ok(accepted)
     }
     pub fn health(&self, id: &str, now: i64, stale_after_ms: i64) -> Result<Health, Error> {
         let d = self.devices.get(id).ok_or(Error::NotFound)?;
+        let online = d
+            .last_seen_ms
+            .is_some_and(|t| now >= t && now.saturating_sub(t) <= stale_after_ms);
         Ok(Health {
             device_id: id.into(),
-            online: d
-                .last_seen_ms
-                .is_some_and(|t| now.saturating_sub(t) <= stale_after_ms),
-            stale: d
-                .last_seen_ms
-                .is_none_or(|t| now.saturating_sub(t) > stale_after_ms),
+            online,
+            stale: !online,
             last_seen_ms: d.last_seen_ms,
             last_sequence: d.last_sequence,
             boot_counter: d.boot_counter,
@@ -429,6 +428,8 @@ impl DeviceSimulator {
     pub fn pending(&self) -> usize {
         self.ring.len()
     }
+    /// send must confirm the entire batch on Ok; its value counts newly stored rows.
+    /// Errors retain every pending reading for a later idempotent retry.
     pub fn sync<F>(&mut self, mut send: F) -> Result<usize, Error>
     where
         F: FnMut(&[Envelope]) -> Result<usize, Error>,
@@ -444,13 +445,19 @@ impl DeviceSimulator {
             return Ok(0);
         }
         let n = send(&batch)?;
-        if n == batch.len() {
-            self.ring.drain(..batch.len());
+        if n > batch.len() {
+            return Err(Error::Invalid(
+                "accepted count exceeds submitted batch".into(),
+            ));
         }
+        // Ok confirms every entry was persisted or was an identical duplicate.
+        // The new-row count may be zero after a lost response and successful retry.
+        self.ring.drain(..batch.len());
         Ok(n)
     }
     pub fn reboot(&mut self) {
         self.boot_counter += 1;
+        self.next_sequence = 0;
     }
 }
 
@@ -501,6 +508,121 @@ mod tests {
         let _ = fs::remove_file(p);
     }
     #[test]
+    fn sequence_reuse_in_a_new_boot_session_is_accepted() {
+        let p = tmp();
+        let mut s = Store::open(&p).unwrap();
+        let secret = "00112233445566778899aabbccddeeff";
+        s.register("d1", secret, "1.0.0").unwrap();
+        let mut dev = DeviceSimulator::new("d1", "1.0.0", secret, 4);
+        dev.sample(10, 12.0, "ok");
+        assert_eq!(dev.sync(|b| s.ingest(b, 20)).unwrap(), 1);
+
+        dev.reboot();
+        dev.sample(30, 13.0, "ok");
+        let next_session = signed(secret, dev.ring[0].clone()).unwrap();
+        assert_eq!(next_session.reading.sequence, 0);
+        assert_eq!(next_session.reading.boot_counter, 5);
+        assert_eq!(s.ingest(&[next_session], 40).unwrap(), 1);
+        assert_eq!(s.reading_count(), 2);
+
+        drop(s);
+        let s = Store::open(&p).unwrap();
+        assert_eq!(s.readings("d1").len(), 2);
+        let _ = fs::remove_file(p);
+    }
+    #[test]
+    fn reordered_sync_and_replay_are_idempotent_within_a_session() {
+        let p = tmp();
+        let mut s = Store::open(&p).unwrap();
+        let secret = "00112233445566778899aabbccddeeff";
+        s.register("d1", secret, "1.0.0").unwrap();
+        let make = |sequence, timestamp| {
+            signed(
+                secret,
+                Reading {
+                    device_id: "d1".into(),
+                    firmware_version: "1.0.0".into(),
+                    sequence,
+                    device_timestamp_ms: timestamp,
+                    boot_counter: 4,
+                    value: sequence as f64,
+                    quality: "ok".into(),
+                },
+            )
+            .unwrap()
+        };
+        let reordered = [make(2, 12), make(0, 10), make(1, 11)];
+        assert_eq!(s.ingest(&reordered, 20).unwrap(), 3);
+        assert_eq!(s.ingest(&reordered, 21).unwrap(), 0);
+        drop(s);
+        let s = Store::open(&p).unwrap();
+        assert_eq!(s.reading_count(), 3);
+        assert_eq!(
+            s.readings("d1")
+                .iter()
+                .map(|e| e.reading.sequence)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        let _ = fs::remove_file(p);
+    }
+    #[test]
+    fn credential_rotation_rejects_old_signature_without_mutating_readings() {
+        let p = tmp();
+        let mut s = Store::open(&p).unwrap();
+        let old_secret = "00112233445566778899aabbccddeeff";
+        let new_secret = "ffeeddccbbaa99887766554433221100";
+        s.register("d1", old_secret, "1.0.0").unwrap();
+        let reading = Reading {
+            device_id: "d1".into(),
+            firmware_version: "1.0.0".into(),
+            sequence: 0,
+            device_timestamp_ms: 10,
+            boot_counter: 4,
+            value: 12.0,
+            quality: "ok".into(),
+        };
+        let old_envelope = signed(old_secret, reading.clone()).unwrap();
+        s.rotate_credential("d1", new_secret).unwrap();
+        assert!(matches!(
+            s.ingest(&[old_envelope], 20),
+            Err(Error::Unauthorized)
+        ));
+        assert_eq!(s.reading_count(), 0);
+        assert_eq!(
+            s.ingest(&[signed(new_secret, reading).unwrap()], 21)
+                .unwrap(),
+            1
+        );
+        assert_eq!(s.reading_count(), 1);
+        let _ = fs::remove_file(p);
+    }
+    #[test]
+    fn stale_health_fails_closed_across_forward_and_backward_clock_jumps() {
+        let p = tmp();
+        let mut s = Store::open(&p).unwrap();
+        let secret = "00";
+        s.register("d", secret, "1").unwrap();
+        let envelope = signed(
+            secret,
+            Reading {
+                device_id: "d".into(),
+                firmware_version: "1".into(),
+                sequence: 0,
+                device_timestamp_ms: 1,
+                boot_counter: 1,
+                value: 1.0,
+                quality: "ok".into(),
+            },
+        )
+        .unwrap();
+        s.ingest(&[envelope], 100).unwrap();
+        assert!(!s.health("d", 150, 50).unwrap().stale);
+        assert!(s.health("d", 151, 50).unwrap().stale);
+        assert!(s.health("d", 50, 50).unwrap().stale);
+        let _ = fs::remove_file(p);
+    }
+    #[test]
     fn offline_ring_is_bounded_and_retries() {
         let mut d = DeviceSimulator::new("d", "1", "00", 1);
         for i in 0..(MAX_RING + 3) {
@@ -521,6 +643,81 @@ mod tests {
         assert_eq!(d.pending(), MAX_RING);
         assert_eq!(d.sync(|b| Ok(b.len())).unwrap(), MAX_BATCH);
         assert_eq!(d.pending(), MAX_RING - MAX_BATCH);
+    }
+    #[test]
+    fn lost_ingest_response_retry_drains_confirmed_duplicate_batch() {
+        let p = tmp();
+        let mut store = Store::open(&p).unwrap();
+        store.register("d", "00", "1").unwrap();
+        let mut device = DeviceSimulator::new("d", "1", "00", 1);
+        device.sample(10, 1.0, "ok");
+        assert!(device
+            .sync(|batch| {
+                store.ingest(batch, 20)?;
+                Err(Error::Io("response lost after durable ingest".into()))
+            })
+            .is_err());
+        assert_eq!(device.pending(), 1);
+        assert_eq!(store.reading_count(), 1);
+        assert_eq!(device.sync(|batch| store.ingest(batch, 21)).unwrap(), 0);
+        assert_eq!(device.pending(), 0);
+        assert_eq!(store.reading_count(), 1);
+        let _ = fs::remove_file(p);
+    }
+    #[test]
+    fn conflicting_session_sequence_is_rejected_before_batch_mutation() {
+        let p = tmp();
+        let mut store = Store::open(&p).unwrap();
+        store.register("d", "00", "1").unwrap();
+        let mut device = DeviceSimulator::new("d", "1", "00", 1);
+        device.sample(10, 1.0, "ok");
+        let original = device.ring[0].clone();
+        device.sync(|batch| store.ingest(batch, 20)).unwrap();
+        let mut conflict = original.clone();
+        conflict.value = 2.0;
+        let mut new_reading = original;
+        new_reading.sequence = 1;
+        let batch = [
+            signed("00", new_reading).unwrap(),
+            signed("00", conflict).unwrap(),
+        ];
+        assert!(matches!(store.ingest(&batch, 21), Err(Error::Conflict)));
+        assert_eq!(store.reading_count(), 1);
+        assert_eq!(store.readings("d")[0].reading.value, 1.0);
+        let _ = fs::remove_file(p);
+    }
+    #[test]
+    fn conflicting_duplicate_inside_batch_does_not_commit_its_prefix() {
+        let p = tmp();
+        let mut store = Store::open(&p).unwrap();
+        store.register("d", "00", "1").unwrap();
+        let mut device = DeviceSimulator::new("d", "1", "00", 1);
+        device.sample(10, 1.0, "ok");
+        let original = device.ring[0].clone();
+        let mut conflict = original.clone();
+        conflict.value = 2.0;
+        assert!(matches!(
+            store.ingest(
+                &[
+                    signed("00", original).unwrap(),
+                    signed("00", conflict).unwrap()
+                ],
+                20
+            ),
+            Err(Error::Conflict)
+        ));
+        assert_eq!(store.reading_count(), 0);
+        let _ = fs::remove_file(p);
+    }
+    #[test]
+    fn impossible_ack_count_retains_pending_readings() {
+        let mut device = DeviceSimulator::new("d", "1", "00", 1);
+        device.sample(10, 1.0, "ok");
+        assert!(matches!(
+            device.sync(|batch| Ok(batch.len() + 1)),
+            Err(Error::Invalid(_))
+        ));
+        assert_eq!(device.pending(), 1);
     }
     #[test]
     fn stale_health_is_explicit() {
