@@ -1,0 +1,8 @@
+# The static demo serves this generated wasm-bindgen package directly.
+*
+!.gitignore
+!package.json
+!fieldbus_demo_wasm.js
+!fieldbus_demo_wasm.d.ts
+!fieldbus_demo_wasm_bg.wasm
+!fieldbus_demo_wasm_bg.wasm.d.ts

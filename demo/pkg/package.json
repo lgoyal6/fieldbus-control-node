@@ -1,0 +1,15 @@
+{
+  "name": "fieldbus-demo-wasm",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "fieldbus_demo_wasm_bg.wasm",
+    "fieldbus_demo_wasm.js",
+    "fieldbus_demo_wasm.d.ts"
+  ],
+  "main": "fieldbus_demo_wasm.js",
+  "types": "fieldbus_demo_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
