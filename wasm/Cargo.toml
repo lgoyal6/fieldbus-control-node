@@ -1,0 +1,14 @@
+[package]
+name = "fieldbus-demo-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+fieldbus-core = { path = "../core" }
+wasm-bindgen = "=0.2.129"
+
+[workspace]

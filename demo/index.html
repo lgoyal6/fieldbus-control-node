@@ -1,0 +1,63 @@
+<!-- Browser demo for the actual fieldbus-core validator, controller, and watchdog. -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Run bounded sensor, CRC fault, and watchdog scenarios in the compiled Rust fieldbus core.">
+  <title>Fieldbus Control Node | Browser simulator</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="#top"><span class="brand-mark">F</span>Fieldbus Control Node</a><span class="top-label">S2 / BROWSER SIMULATOR</span><a class="repo-link" href="https://github.com/lgoyal6/fieldbus-control-node" target="_blank" rel="noreferrer">View source ↗</a></header>
+  <main id="top">
+    <section class="hero">
+      <p class="eyebrow"><span class="live-dot"></span> Runs locally in your browser</p>
+      <h1>Test the control path<br><em>before the bus gets real.</em></h1>
+      <p class="lede">Choose a bounded sensor scenario and run the compiled Rust core. Inspect accepted frames, rejected frames, actuator output, and the latched safe state.</p>
+      <div class="scope-note"><strong>Simulation boundary</strong><span>This runs the repository's <code>fieldbus-core</code> crate in WebAssembly. It does not run the operating-system scheduler, physical CAN hardware, or a hardware-in-the-loop test.</span></div>
+    </section>
+
+    <section class="workspace">
+      <aside class="panel controls">
+        <p class="eyebrow">Scenario controls</p>
+        <label for="scenario">Input condition</label>
+        <select id="scenario">
+          <option value="normal">Valid sensor stream</option>
+          <option value="bad_crc">One corrupt extra frame</option>
+          <option value="sensor_stale">Sensor stops sending</option>
+        </select>
+        <label for="cycles">Run length <output id="cycles-value">300</output> cycles</label>
+        <input id="cycles" type="range" min="100" max="1000" step="50" value="300">
+        <label for="fault-cycle">Fault begins at cycle <output id="fault-value">120</output></label>
+        <input id="fault-cycle" type="range" min="10" max="280" step="1" value="120">
+        <button id="run" type="button">Run scenario <span aria-hidden="true">→</span></button>
+        <p id="run-status" class="run-status" role="status" aria-live="polite">Ready. Choose an input condition and run the simulator.</p>
+        <div class="control-note"><strong>Fixed core settings</strong><span>10 ms cycle period</span><span>80 ms sensor timeout</span><span>Maximum 1,000 cycles per run</span></div>
+      </aside>
+
+      <section class="panel result-panel" aria-labelledby="result-title">
+        <div class="result-heading"><div><p class="eyebrow">Simulation output</p><h2 id="result-title">Actuator response</h2></div><span class="badge" id="result-badge">Waiting</span></div>
+        <p class="chart-note">Actuator command from the real Rust controller. The safe state commands zero and stays latched.</p>
+        <div class="chart-scroll"><svg id="response-chart" viewBox="0 0 760 300" role="img" aria-label="Actuator response over control cycles"></svg></div>
+        <div class="summary-grid">
+          <div><span>Accepted frames</span><strong id="accepted">-</strong></div>
+          <div><span>Rejected frames</span><strong id="rejected">-</strong></div>
+          <div><span>Safe state</span><strong id="safe-state">-</strong></div>
+          <div><span>Trip response</span><strong id="reaction">-</strong></div>
+        </div>
+        <p class="result-detail" id="result-detail">Run a scenario to see the frame and watchdog results.</p>
+      </section>
+    </section>
+
+    <section class="pipeline panel">
+      <p class="eyebrow">Why the watchdog uses accepted frames</p>
+      <h2>Bad data cannot keep the controller alive.</h2>
+      <div class="steps"><article><span>01</span><h3>Validate</h3><p>The core checks the frame identifier, length, sequence, reserved bytes, value range, and CRC.</p></article><article><span>02</span><h3>Feed on acceptance</h3><p>Only a trusted sensor frame refreshes the watchdog timer. A rejected frame does not.</p></article><article><span>03</span><h3>Latch safe</h3><p>When no trusted frame arrives within the timeout, the node commands the safe actuator value and stays latched.</p></article></div>
+    </section>
+
+    <footer><span>Deterministic synthetic sensor values. No data leaves this page.</span><span id="provenance"></span></footer>
+  </main>
+</body>
+</html>
