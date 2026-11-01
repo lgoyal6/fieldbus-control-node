@@ -68,7 +68,7 @@ function showResult(result) {
   document.querySelector('#result-detail').textContent = result.mode === 'bad_crc'
     ? `The valid sensor frame was accepted. The extra corrupted copy was rejected by the CRC check. The watchdog remained fed by the accepted frame.`
     : result.summary.safe_latched
-      ? `No sensor frame was accepted after cycle ${result.fault_cycle}. The 80 ms timeout was exceeded and the core latched safe at cycle ${result.summary.safe_cycle}.`
+      ? `Sensor loss starts at cycle ${result.fault_cycle}. The last accepted frame is cycle ${result.fault_cycle - 1}. The watchdog trips on the first 10 ms check strictly past its ${result.timeout_us / 1000} ms timeout, so the safe-state response from that last frame is ${result.summary.reaction_us / 1000} ms. The core latched safe at cycle ${result.summary.safe_cycle}.`
       : `Every sensor frame passed validation. The controller stayed active for ${result.cycles} cycles.`;
   drawResponse(result);
 }

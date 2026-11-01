@@ -41,7 +41,9 @@ jobs:
   # emphatically not hardware in the loop. The developer machine has no CAN
   # adapter, which is why this lives here rather than in the local gate.
   socketcan-vcan:
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 now uses an Azure 7.0 kernel without an extra-modules
+    # package. The 22.04 image retains the supported 6.8 Azure kernel.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # The runner's Azure kernel ships without vcan: modprobe fails with
